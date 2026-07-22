@@ -9,7 +9,7 @@ export default function Home() {
       <div style={{ flex: 1 }} />
       <Logo />
       <p className="home-blurb">
-        Stop the &ldquo;anything lah&rdquo; loop. Start a session, everyone
+        Stop the &ldquo;later eat what ah? i anything lah&rdquo; loop. Start a session, everyone
         swipes, eat where you all match.
       </p>
       <div className="home-actions">

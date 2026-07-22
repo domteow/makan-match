@@ -77,7 +77,7 @@ export default function Results({ session }) {
     <div className="shell">
       <Logo />
       <div className="results-heading">
-        {rows.length > 0 ? "It's a makan! 🎉" : "No matches 😅"}
+        {rows.length > 0 ? "It's a makan match! 🎉" : "No matches 😅"}
       </div>
       <div className="results-list">
         {allIn.length > 0 && (
