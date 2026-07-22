@@ -13,10 +13,10 @@ export default function Home() {
         swipes, eat where you all match.
       </p>
       <div className="home-actions">
-        <button className="btn btn-orange" onClick={() => navigate("/lobby")}>
+        <button className="btn btn-orange" onClick={() => navigate("/start")}>
           Start a session
         </button>
-        <button className="btn btn-cream" onClick={() => navigate("/lobby")}>
+        <button className="btn btn-cream" onClick={() => navigate("/join")}>
           Join with code
         </button>
       </div>

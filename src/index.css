@@ -457,6 +457,97 @@ body {
   line-height: 1.5;
 }
 
+/* Start / join forms */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 300px;
+  margin-top: 32px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-label {
+  color: var(--mist);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+.text-input {
+  background: var(--cream);
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: inherit;
+  color: var(--ink);
+  min-height: 44px;
+  width: 100%;
+}
+
+.text-input:focus {
+  outline: 3px solid var(--orange);
+  outline-offset: 1px;
+}
+
+.code-input {
+  font-family: var(--font-display);
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  text-align: center;
+  font-size: 22px;
+}
+
+.form-error {
+  color: #ffb4a4;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.screen-status {
+  color: var(--mist-light);
+  font-weight: 700;
+  text-align: center;
+}
+
+/* Waiting-for-others panel + progress line during swiping */
+.waiting-panel {
+  margin-top: 40px;
+  width: 100%;
+  max-width: 320px;
+}
+
+.progress-count {
+  margin-left: auto;
+  color: var(--mist);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.progress-line {
+  margin-top: 14px;
+  color: var(--mist);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.results-tier-heading {
+  color: var(--mist);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  margin: 14px 0 8px;
+}
+
 .home-actions {
   display: flex;
   flex-direction: column;
