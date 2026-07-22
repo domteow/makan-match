@@ -12,7 +12,9 @@ const ERROR_COPY = {
 
 function friendly(error) {
   const code = Object.keys(ERROR_COPY).find((c) => error.message?.includes(c));
-  return new Error(code ? ERROR_COPY[code] : error.message);
+  const e = new Error(code ? ERROR_COPY[code] : error.message);
+  e.code = code ?? null; // screens can branch on this (e.g. NOT_A_PARTICIPANT)
+  return e;
 }
 
 export async function createSession(displayName) {

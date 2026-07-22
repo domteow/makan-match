@@ -1,15 +1,18 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import Logo from "../components/Logo.jsx";
 import { createSession, joinSession } from "../lib/session.js";
 
 // One screen for both entry paths: mode="start" (host, name only)
-// and mode="join" (code + name).
+// and mode="join" (code + name). ?code= prefills from a shared link.
 export default function Join({ mode }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const isStart = mode === "start";
   const [name, setName] = useState("");
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(
+    (searchParams.get("code") || "").toUpperCase()
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 

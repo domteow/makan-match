@@ -18,9 +18,15 @@ export default function Session({ userId }) {
     try {
       setState(await getSessionState(code));
     } catch (e) {
+      // Shared link opened by someone who hasn't joined yet: send them to
+      // the join screen with the code prefilled instead of a dead end.
+      if (e.code === "NOT_A_PARTICIPANT") {
+        navigate(`/join?code=${encodeURIComponent(code)}`, { replace: true });
+        return;
+      }
       setError(e.message);
     }
-  }, [code]);
+  }, [code, navigate]);
 
   useEffect(() => {
     refresh();
