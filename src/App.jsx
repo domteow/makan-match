@@ -1,35 +1,49 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Routes, Route } from "react-router-dom";
 import Home from "./screens/Home.jsx";
-import Lobby from "./screens/Lobby.jsx";
-import Swipe from "./screens/Swipe.jsx";
-import Results from "./screens/Results.jsx";
-import { EATERIES } from "./data/mockEateries.js";
+import Join from "./screens/Join.jsx";
+import Session from "./screens/Session.jsx";
+import Logo from "./components/Logo.jsx";
+import { ensureSignedIn } from "./lib/auth.js";
 
 export default function App() {
-  const [votes, setVotes] = useState({});
-  const [joined, setJoined] = useState(1);
+  const [userId, setUserId] = useState(null);
+  const [authError, setAuthError] = useState(null);
 
-  const deck = EATERIES.filter((e) => !(e.id in votes));
+  useEffect(() => {
+    ensureSignedIn()
+      .then(setUserId)
+      .catch((e) => setAuthError(e.message));
+  }, []);
 
-  // Records the vote and returns how many cards remain after it,
-  // so the Swipe screen knows when to move on to results.
-  const handleSwipe = (id, liked) => {
-    setVotes((v) => ({ ...v, [id]: liked }));
-    return deck.length - 1;
-  };
+  if (authError) {
+    return (
+      <div className="shell">
+        <div style={{ flex: 1 }} />
+        <Logo />
+        <p className="form-error">Couldn&rsquo;t connect: {authError}</p>
+        <div style={{ flex: 1.4 }} />
+      </div>
+    );
+  }
 
-  const reset = () => {
-    setVotes({});
-    setJoined(1);
-  };
+  if (!userId) {
+    return (
+      <div className="shell">
+        <div style={{ flex: 1 }} />
+        <Logo />
+        <p className="screen-status">Warming up the wok…</p>
+        <div style={{ flex: 1.4 }} />
+      </div>
+    );
+  }
 
   return (
     <Routes>
       <Route path="/" element={<Home />} />
-      <Route path="/lobby" element={<Lobby joined={joined} setJoined={setJoined} />} />
-      <Route path="/swipe" element={<Swipe deck={deck} onSwipe={handleSwipe} />} />
-      <Route path="/results" element={<Results votes={votes} onReset={reset} />} />
+      <Route path="/start" element={<Join mode="start" />} />
+      <Route path="/join" element={<Join mode="join" />} />
+      <Route path="/s/:code" element={<Session userId={userId} />} />
     </Routes>
   );
 }

@@ -1,49 +1,68 @@
-import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 import Logo from "../components/Logo.jsx";
-import { FRIENDS, ROOM_CODE } from "../data/mockEateries.js";
+import { startSession } from "../lib/session.js";
 
-export default function Lobby({ joined, setJoined }) {
-  const navigate = useNavigate();
-  const total = FRIENDS.length;
-  const full = joined >= total;
+const AVATAR_COLORS = ["#E8542F", "#2E8B57", "#D4A017", "#7B5EA7", "#C8331F", "#1F7A4D"];
 
-  // Fake friends joining the lobby (Phase 1 mock; realtime later)
-  useEffect(() => {
-    if (full) return;
-    const t = setTimeout(() => setJoined((j) => j + 1), 900);
-    return () => clearTimeout(t);
-  }, [joined, full, setJoined]);
+export default function Lobby({ sessionId, code, participants, userId, isHost }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  const start = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await startSession(sessionId);
+      // No navigation here: the sessions UPDATE event flips status to
+      // 'swiping' and Session re-renders everyone into the deck.
+    } catch (e) {
+      setError(e.message);
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="shell">
       <Logo />
       <div className="room-code-ticket">
         <div className="room-code-label">ROOM CODE</div>
-        <div className="room-code-value">{ROOM_CODE}</div>
+        <div className="room-code-value">{code}</div>
       </div>
       <div className="lobby-list">
         <div className="lobby-list-heading">
-          IN THE QUEUE ({joined}/{total})
+          IN THE QUEUE ({participants.length})
         </div>
-        {FRIENDS.slice(0, joined).map((f) => (
-          <div key={f.name} className="lobby-row">
-            <div className="lobby-avatar" style={{ background: f.color }}>
-              {f.name[0]}
+        {participants.map((p, i) => (
+          <div key={p.user_id} className="lobby-row">
+            <div
+              className="lobby-avatar"
+              style={{ background: AVATAR_COLORS[i % AVATAR_COLORS.length] }}
+            >
+              {p.display_name[0].toUpperCase()}
             </div>
-            <span className="lobby-name">{f.name}</span>
-            {f.name === "You" && <span className="lobby-host-badge">HOST</span>}
+            <span className="lobby-name">
+              {p.display_name}
+              {p.user_id === userId && " (you)"}
+            </span>
+            {p.is_host && <span className="lobby-host-badge">HOST</span>}
           </div>
         ))}
       </div>
-      <button
-        className={`btn ${full ? "btn-orange" : "btn-muted"}`}
-        style={{ marginTop: 24 }}
-        disabled={!full}
-        onClick={() => navigate("/swipe")}
-      >
-        {full ? "Start swiping →" : "Waiting for friends…"}
-      </button>
+      {error && <p className="form-error">{error}</p>}
+      {isHost ? (
+        <button
+          className="btn btn-orange"
+          style={{ marginTop: 24 }}
+          disabled={busy}
+          onClick={start}
+        >
+          {busy ? "Dealing the deck…" : "Start swiping →"}
+        </button>
+      ) : (
+        <p className="screen-status" style={{ marginTop: 24 }}>
+          Waiting for the host to start…
+        </p>
+      )}
     </div>
   );
 }
