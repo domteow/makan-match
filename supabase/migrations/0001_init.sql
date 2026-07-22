@@ -81,16 +81,16 @@ returns text
 language plpgsql volatile set search_path = public as $$
 declare
   chars constant text := 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; -- no 0/O/1/I/L
-  code text;
+  v_code text;
 begin
   loop
-    code := (
+    v_code := (
       select string_agg(substr(chars, 1 + floor(random() * length(chars))::int, 1), '')
       from generate_series(1, 6)
     );
-    exit when not exists (select 1 from sessions where sessions.code = code);
+    exit when not exists (select 1 from sessions s where s.code = v_code);
   end loop;
-  return code;
+  return v_code;
 end;
 $$;
 
