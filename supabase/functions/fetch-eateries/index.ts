@@ -154,10 +154,20 @@ Deno.serve(async (req) => {
       "X-Goog-FieldMask": fieldMask,
     },
     body: JSON.stringify({
-      includedTypes: ["restaurant"],
-      excludedTypes: ["fast_food_restaurant"], // optional, tune later
+      includedTypes: ["restaurant", "cafe", "meal_takeaway"],
+      // Hotels (their restaurants get tagged lodging) and malls/markets kept
+      // showing up as pins; excludedTypes takes precedence over included.
+      excludedTypes: [
+        "lodging",
+        "hotel",
+        "shopping_mall",
+        "supermarket",
+        "grocery_store",
+      ],
       maxResultCount: 20,
-      rankPreference: "POPULARITY",
+      // DISTANCE surfaces the individual eateries inside nearby malls that
+      // POPULARITY buried under big-name places further away.
+      rankPreference: "DISTANCE",
       locationRestriction: {
         circle: {
           center: { latitude: session.lat, longitude: session.lng },
@@ -172,7 +182,13 @@ Deno.serve(async (req) => {
   }
 
   const { places = [] } = await res.json();
+  // Belt and braces on top of excludedTypes: Google still occasionally
+  // returns hotel/mall pins whose primary type matched includedTypes.
+  const BANNED_TYPES = ["lodging", "shopping_mall"];
   const rows = places
+    .filter(
+      (p: any) => !p.types?.some((t: string) => BANNED_TYPES.includes(t))
+    )
     .filter((p: any) => (p.userRatingCount ?? 0) >= MIN_RATING_COUNT)
     .filter((p: any) => !openNow || p.currentOpeningHours?.openNow !== false)
     .slice(0, MAX_DECK_SIZE)
