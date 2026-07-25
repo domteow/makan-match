@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Logo from "../components/Logo.jsx";
 import SwipeDeck from "../components/SwipeDeck.jsx";
 import { recordSwipe, finishSwiping, getMySwipedEateryIds } from "../lib/swipes.js";
+import { passesPriceFilter } from "../lib/eateries.js";
 import { formatEatery } from "../lib/format.js";
-import { MOCK_MEDIA } from "../data/mockMedia.js";
 
 export default function Swipe({ session, participants, eateries, userId }) {
   const [swipedIds, setSwipedIds] = useState(null); // null until loaded
@@ -18,12 +18,17 @@ export default function Swipe({ session, participants, eateries, userId }) {
       .catch((e) => setError(e.message));
   }, [session.id]);
 
+  // price_max is applied client-side (see passesPriceFilter); every client
+  // filters identically from session.filters, so the deck matches for all.
+  const visible = useMemo(
+    () => eateries.filter((e) => passesPriceFilter(e, session.filters)),
+    [eateries, session.filters]
+  );
+
   const deck = useMemo(() => {
     if (!swipedIds) return [];
-    return eateries
-      .filter((e) => !swipedIds.has(e.id))
-      .map((e) => formatEatery(e, MOCK_MEDIA[e.name]));
-  }, [eateries, swipedIds]);
+    return visible.filter((e) => !swipedIds.has(e.id)).map(formatEatery);
+  }, [visible, swipedIds]);
 
   // Deck exhausted (now, or already when we loaded) -> tell the server.
   // finish_swiping is idempotent, so firing again after a refresh is fine.
@@ -39,7 +44,9 @@ export default function Swipe({ session, participants, eateries, userId }) {
   };
 
   const others = participants.filter((p) => p.user_id !== userId);
-  const total = session.eatery_count;
+  // Progress denominators use the filtered deck size (same for everyone),
+  // not eatery_count, which counts pre-filter rows.
+  const total = visible.length;
 
   if (!swipedIds) {
     return (

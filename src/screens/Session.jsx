@@ -92,5 +92,5 @@ export default function Session({ userId }) {
     );
   }
 
-  return <Results session={session} />;
+  return <Results session={session} isHost={isHost} />;
 }

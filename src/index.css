@@ -555,3 +555,60 @@ body {
   margin-top: 20px;
   width: 260px;
 }
+
+/* Session-create: area picker + filter chips */
+.area-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.select-chip {
+  background: var(--cream);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  font-weight: 800;
+  font-family: inherit;
+  cursor: pointer;
+  min-height: 44px;
+  box-shadow: 0 2px 0 var(--ink);
+}
+
+.select-chip.selected {
+  background: var(--pandan);
+  color: var(--cream);
+}
+
+.select-chip:active {
+  transform: translateY(2px);
+  box-shadow: none;
+}
+
+.field-hint {
+  color: var(--mist);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.maps-link {
+  display: inline-block;
+  margin-top: 4px;
+  color: var(--pandan-bright, #2fbf71);
+  font-size: 12.5px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.maps-link:active {
+  text-decoration: underline;
+}
