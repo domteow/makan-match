@@ -31,8 +31,30 @@ The app needs a Supabase project (Phase 2+):
    (Dashboard → Settings → API). For deploys, add the same two variables in
    Vercel → Settings → Environment Variables.
 
-Phase 2 ships a mock deck of 8 eateries (seeded server-side when the host
-starts the session); real Google Places data arrives in Phase 3.
+## Google Places setup (Phase 3)
+
+Decks are dealt from Google Places API (New) Nearby Search, called only from
+the `fetch-eateries` Edge Function; photos are proxied and cached by
+`place-photo`. The API key never reaches the client.
+
+1. In Google Cloud, enable **Places API (New)** and create an API key
+   restricted to it.
+2. Set the key as an Edge Function secret and deploy both functions:
+
+   ```sh
+   npx supabase secrets set GOOGLE_PLACES_API_KEY=<your-key>
+   npx supabase functions deploy fetch-eateries
+   npx supabase functions deploy place-photo
+   ```
+
+   (`place-photo` is configured with `verify_jwt = false` in
+   `supabase/config.toml` — it is loaded from plain `<img>` tags.)
+
+3. The `place-photos` Storage bucket (photo cache) is created by migration
+   `0002_places.sql`, so `npx supabase db push` covers it.
+
+Before touching the Places field mask or call patterns, read
+`docs/COSTS.md`.
 
 ## Two-window smoke test
 

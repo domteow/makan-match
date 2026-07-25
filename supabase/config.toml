@@ -385,6 +385,16 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+[functions.fetch-eateries]
+enabled = true
+verify_jwt = true
+
+# Loaded via plain <img> tags, which cannot attach an Authorization header.
+# The function only serves cached public photo bytes, nothing sensitive.
+[functions.place-photo]
+enabled = true
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

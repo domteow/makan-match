@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Logo from "../components/Logo.jsx";
 import { getResults } from "../lib/swipes.js";
+import { resetSessionForRedeal } from "../lib/eateries.js";
 import { formatEatery } from "../lib/format.js";
-import { MOCK_MEDIA } from "../data/mockMedia.js";
 
 function ResultRow({ row, topPick }) {
-  const e = formatEatery(row, MOCK_MEDIA[row.name]);
+  const e = formatEatery(row);
   return (
     <div className={`result-row${topPick ? " top-pick" : ""}`}>
       <div className="result-thumb">
@@ -27,6 +27,16 @@ function ResultRow({ row, topPick }) {
         <div className="result-sub">
           {e.cuisine} · {e.dist} · {e.price}
         </div>
+        {row.maps_uri && (
+          <a
+            className="maps-link"
+            href={row.maps_uri}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open in Maps ↗
+          </a>
+        )}
       </div>
       <div className="result-score">
         <div
@@ -41,16 +51,30 @@ function ResultRow({ row, topPick }) {
   );
 }
 
-export default function Results({ session }) {
+export default function Results({ session, isHost }) {
   const navigate = useNavigate();
   const [rows, setRows] = useState(null);
   const [error, setError] = useState(null);
+  const [redealing, setRedealing] = useState(false);
 
   useEffect(() => {
     getResults(session.id)
       .then(setRows)
       .catch((e) => setError(e.message));
   }, [session.id]);
+
+  // Zero matches: host widens to 3km and redeals. The reset flips the session
+  // back to 'lobby'; the sessions UPDATE moves everyone there automatically.
+  const widenAndRedeal = async () => {
+    setRedealing(true);
+    setError(null);
+    try {
+      await resetSessionForRedeal(session.id, 3000);
+    } catch (e) {
+      setError(e.message);
+      setRedealing(false);
+    }
+  };
 
   if (error) {
     return (
@@ -102,6 +126,21 @@ export default function Results({ session }) {
           </p>
         )}
       </div>
+      {rows.length === 0 &&
+        (isHost ? (
+          <button
+            className="btn btn-orange"
+            style={{ marginTop: 16 }}
+            disabled={redealing}
+            onClick={widenAndRedeal}
+          >
+            {redealing ? "Redealing…" : "Widen to 3km and redeal"}
+          </button>
+        ) : (
+          <p className="screen-status" style={{ marginTop: 16 }}>
+            Ask the host to widen the radius and redeal.
+          </p>
+        ))}
       <button
         className="btn btn-cream"
         style={{ marginTop: 16 }}

@@ -73,9 +73,9 @@ export default function SwipeCard({ eatery, onSwipe, isTop, stackIndex, forcedDi
         }}
       >
         <div className="swipe-card-photo">
-          {/* Emoji fallback layer (visible if photo fails) */}
+          {/* Emoji fallback layer (visible if photo fails or is absent) */}
           <span className="swipe-card-emoji">{eatery.emoji}</span>
-          {!imgFailed && (
+          {eatery.img && !imgFailed && (
             <img
               className="swipe-card-img"
               src={eatery.img}
@@ -102,8 +102,8 @@ export default function SwipeCard({ eatery, onSwipe, isTop, stackIndex, forcedDi
             {eatery.cuisine} · {eatery.tag}
           </div>
           <div className="swipe-card-chips">
-            <Chip>★ {eatery.rating}</Chip>
-            <Chip>{eatery.dist} away</Chip>
+            {eatery.rating != null && <Chip>★ {eatery.rating}</Chip>}
+            {eatery.dist && <Chip>{eatery.dist} away</Chip>}
           </div>
         </div>
       </div>

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import Logo from "../components/Logo.jsx";
-import { startSession } from "../lib/session.js";
+import { startSwiping, resetSessionForRedeal } from "../lib/eateries.js";
 
 const AVATAR_COLORS = ["#E8542F", "#2E8B57", "#D4A017", "#7B5EA7", "#C8331F", "#1F7A4D"];
 
@@ -8,15 +8,16 @@ export default function Lobby({ sessionId, code, participants, userId, isHost })
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  const start = async () => {
+  const start = async ({ widenFirst = false } = {}) => {
     setBusy(true);
     setError(null);
     try {
-      await startSession(sessionId);
+      if (widenFirst) await resetSessionForRedeal(sessionId, 3000);
+      await startSwiping(sessionId);
       // No navigation here: the sessions UPDATE event flips status to
       // 'swiping' and Session re-renders everyone into the deck.
     } catch (e) {
-      setError(e.message);
+      setError(e);
       setBusy(false);
     }
   };
@@ -48,16 +49,28 @@ export default function Lobby({ sessionId, code, participants, userId, isHost })
           </div>
         ))}
       </div>
-      {error && <p className="form-error">{error}</p>}
+      {error && <p className="form-error">{error.message}</p>}
       {isHost ? (
-        <button
-          className="btn btn-orange"
-          style={{ marginTop: 24 }}
-          disabled={busy}
-          onClick={start}
-        >
-          {busy ? "Dealing the deck…" : "Start swiping →"}
-        </button>
+        <>
+          <button
+            className="btn btn-orange"
+            style={{ marginTop: 24 }}
+            disabled={busy}
+            onClick={() => start()}
+          >
+            {busy ? "Dealing the deck…" : "Start swiping →"}
+          </button>
+          {error?.code === "NO_EATERIES_FOUND" && (
+            <button
+              className="btn btn-cream"
+              style={{ marginTop: 12 }}
+              disabled={busy}
+              onClick={() => start({ widenFirst: true })}
+            >
+              Widen to 3km and try again
+            </button>
+          )}
+        </>
       ) : (
         <p className="screen-status" style={{ marginTop: 24 }}>
           Waiting for the host to start…
