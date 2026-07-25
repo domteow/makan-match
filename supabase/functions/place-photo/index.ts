@@ -11,8 +11,11 @@ const BUCKET = "place-photos";
 const DEFAULT_WIDTH = 640;
 const CACHE_CONTROL = "public, max-age=31536000, immutable";
 
-// e.g. places/ChIJxxx/photos/ATplxxx
-const REF_PATTERN = /^places\/[^/]+\/photos\/[^/]+$/;
+// e.g. places/ChIJxxx/photos/ATplxxx. This function is publicly invokable
+// (verify_jwt = false, it's loaded via <img>), so ref is strictly validated
+// before anything is spent on a Google call: allowlisted charset only, no
+// path tricks.
+const REF_PATTERN = /^places\/[A-Za-z0-9_-]+\/photos\/[A-Za-z0-9_-]+$/;
 
 async function sha256Hex(input: string): Promise<string> {
   const digest = await crypto.subtle.digest(
@@ -35,7 +38,7 @@ Deno.serve(async (req) => {
   const ref = url.searchParams.get("ref");
   if (!ref || !REF_PATTERN.test(ref)) {
     // Client falls back to its emoji placeholder on any error status.
-    return new Response("Not found", { status: 404 });
+    return new Response("Bad request", { status: 400 });
   }
   const w = Math.min(
     Math.max(parseInt(url.searchParams.get("w") ?? "", 10) || DEFAULT_WIDTH, 200),
