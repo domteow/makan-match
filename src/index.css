@@ -391,8 +391,12 @@ body {
   gap: 14px;
 }
 
-.result-row.top-pick {
-  box-shadow: 0 0 0 3px var(--orange);
+.result-row.tier-allin {
+  box-shadow: 0 0 0 3px var(--pandan);
+}
+
+.result-row.tier-sweep {
+  box-shadow: 0 0 0 3px #d8a72a;
 }
 
 .result-thumb {
@@ -431,17 +435,51 @@ body {
 
 .result-score {
   text-align: center;
+  flex-shrink: 0;
 }
 
 .result-score-count {
   font-family: var(--font-display);
   font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  color: var(--taupe);
+}
+
+.result-score-count.tier-allin {
+  color: var(--pandan);
+}
+
+.result-score-count.tier-sweep {
+  color: #b8860b;
+}
+
+/* The fraction spelled out in words, so "2/2" is never read as "2 of us
+   out of 3 of us". */
+.result-votes {
+  margin-top: 3px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--taupe);
+}
+
+.result-votes.tier-allin {
+  color: var(--pandan);
+}
+
+.result-votes.tier-sweep {
+  color: #b8860b;
 }
 
 .result-all-in {
   font-size: 10px;
   font-weight: 800;
   color: var(--pandan);
+}
+
+.result-sweep {
+  font-size: 10px;
+  font-weight: 800;
+  color: #b8860b;
 }
 
 .results-empty {
@@ -611,4 +649,272 @@ body {
 
 .maps-link:active {
   text-decoration: underline;
+}
+
+/* ---------- Reveal ----------
+   The reveal is meant to feel like an event, not a page load: the page
+   deals itself out top to bottom, one card at a time, and the winner
+   lands with a bit of weight. All CSS transforms, no libraries. */
+
+.results-context {
+  margin-top: 6px;
+  color: var(--mist);
+  font-size: 12.5px;
+  font-weight: 700;
+  text-align: center;
+}
+
+@keyframes reveal-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.reveal-in {
+  animation: reveal-rise 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Scale in past its resting size and settle back — a stamp coming down,
+   not a spinner finishing. */
+@keyframes hero-settle {
+  0% {
+    opacity: 0;
+    transform: scale(1.16) translateY(12px);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(0.98) translateY(0);
+  }
+  82% {
+    transform: scale(1.015);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.hero-wrap {
+  animation: hero-settle 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.hero-card {
+  background: var(--cream);
+  border: 3px solid var(--orange);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 6px 0 var(--ink);
+  margin-bottom: 18px;
+}
+
+.hero-photo {
+  position: relative;
+  height: 190px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-bottom: 3px solid var(--orange);
+  background: repeating-linear-gradient(
+    45deg,
+    var(--cream-shade),
+    var(--cream-shade) 14px,
+    var(--cream-shade-2) 14px,
+    var(--cream-shade-2) 28px
+  );
+}
+
+.hero-emoji {
+  font-size: 78px;
+  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.15));
+}
+
+.hero-photo img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hero-scrim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(26, 21, 18, 0.55), transparent 55%);
+}
+
+.hero-stamp {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  transform: rotate(-3deg);
+  font-family: var(--font-display);
+  font-size: 18px;
+  letter-spacing: 1px;
+  color: var(--cream);
+  background: var(--orange);
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  padding: 5px 12px;
+}
+
+.hero-info {
+  padding: 16px 18px 18px;
+}
+
+.hero-name {
+  font-family: var(--font-display);
+  font-size: 27px;
+  line-height: 1.1;
+  color: var(--ink);
+}
+
+.hero-meta {
+  margin-top: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--taupe);
+}
+
+.hero-votes {
+  margin-top: 8px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--pandan);
+}
+
+/* ---------- Live progress ---------- */
+
+.progress-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 340px;
+  margin-top: 14px;
+}
+
+.progress-pill {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(253, 246, 227, 0.1);
+  border: 1px solid rgba(253, 246, 227, 0.18);
+  font-size: 12.5px;
+}
+
+.progress-pill.is-done {
+  border-color: rgba(47, 191, 113, 0.5);
+}
+
+.progress-pill-name {
+  color: var(--cream);
+  font-weight: 700;
+}
+
+.progress-pill-count {
+  color: var(--mist);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-pill.is-done .progress-pill-count {
+  color: var(--pandan-bright);
+}
+
+.progress-pill-late {
+  color: var(--mist);
+  font-size: 11px;
+  font-style: italic;
+}
+
+/* ---------- Host reveal confirm sheet ---------- */
+
+.reveal-btn {
+  margin-top: 18px;
+}
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(14, 59, 54, 0.72);
+  animation: sheet-fade 160ms ease both;
+}
+
+@keyframes sheet-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.sheet {
+  width: 100%;
+  max-width: 398px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--cream);
+  border: 2px solid var(--ink);
+  border-radius: 20px;
+  padding: 20px 18px calc(18px + env(safe-area-inset-bottom));
+  box-shadow: 0 6px 0 var(--ink);
+  animation: sheet-up 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes sheet-up {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.sheet-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--ink);
+}
+
+.sheet-body {
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.sheet-note {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--taupe);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal-in,
+  .hero-wrap,
+  .sheet,
+  .sheet-backdrop {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
 }

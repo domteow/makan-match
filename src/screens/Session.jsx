@@ -1,22 +1,32 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Logo from "../components/Logo.jsx";
 import Lobby from "./Lobby.jsx";
 import Swipe from "./Swipe.jsx";
 import Results from "./Results.jsx";
-import { getSessionState, subscribeToSession } from "../lib/session.js";
+import {
+  getSessionState,
+  subscribeToSession,
+  applyParticipantChange,
+} from "../lib/session.js";
 
 // Container for /s/:code — loads session state, keeps it fresh via realtime,
-// and renders lobby / deck / results based on session.status.
+// and renders lobby / deck / results based on session.status. Status is only
+// ever read from the server, never assumed locally, so every client switches
+// screens off the same fact.
 export default function Session({ userId }) {
   const { code } = useParams();
   const navigate = useNavigate();
   const [state, setState] = useState(null);
   const [error, setError] = useState(null);
+  const hostIdRef = useRef(null);
 
   const refresh = useCallback(async () => {
     try {
-      setState(await getSessionState(code));
+      const next = await getSessionState(code);
+      hostIdRef.current = next.session.host_id;
+      setState(next);
+      setError(null);
     } catch (e) {
       // Shared link opened by someone who hasn't joined yet: send them to
       // the join screen with the code prefilled instead of a dead end.
@@ -36,8 +46,16 @@ export default function Session({ userId }) {
   useEffect(() => {
     if (!sessionId) return undefined;
     return subscribeToSession(sessionId, {
-      onParticipants: refresh,
+      // Progress ticks are a single integer on a row we already have —
+      // patch it locally rather than refetching the whole session per swipe.
+      onParticipant: (payload) =>
+        setState((prev) =>
+          prev ? applyParticipantChange(prev, payload, hostIdRef.current) : prev
+        ),
+      // A status change means the deck was dealt, revealed, or redealt —
+      // all of which change more than we can patch. Re-read everything.
       onSession: refresh,
+      onResync: refresh,
     });
   }, [sessionId, refresh]);
 
@@ -88,9 +106,12 @@ export default function Session({ userId }) {
         participants={participants}
         eateries={eateries}
         userId={userId}
+        isHost={isHost}
       />
     );
   }
 
-  return <Results session={session} isHost={isHost} />;
+  return (
+    <Results session={session} participants={participants} isHost={isHost} />
+  );
 }

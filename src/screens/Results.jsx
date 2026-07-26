@@ -5,10 +5,73 @@ import { getResults } from "../lib/swipes.js";
 import { resetSessionForRedeal } from "../lib/eateries.js";
 import { formatEatery } from "../lib/format.js";
 
-function ResultRow({ row, topPick }) {
+const STAGGER_MS = 60;
+
+// The fraction is always votes cast on that card, never headcount — with
+// partial participation those differ, and a card two people saw and both
+// loved is a 2/2, not a 2/3. Spell out the gap rather than hide it.
+function voteLabel(row) {
+  const missing = (row.participant_count ?? 0) - (row.vote_count ?? 0);
+  const base = `${row.yes_count}/${row.vote_count} liked`;
+  if (missing <= 0) return base;
+  return `${base} · ${missing} didn't vote`;
+}
+
+function Meta({ e, row }) {
+  return (
+    <>
+      {[e.cuisine, e.dist, e.price].filter(Boolean).join(" · ")}
+      {row.rating != null && ` · ★ ${row.rating}`}
+    </>
+  );
+}
+
+function MapsLink({ row }) {
+  if (!row.maps_uri) return null;
+  return (
+    <a className="maps-link" href={row.maps_uri} target="_blank" rel="noreferrer">
+      Open in Maps ↗
+    </a>
+  );
+}
+
+// The one card that won outright: full-bleed photo, brand orange, the
+// biggest type on the screen.
+function HeroCard({ row }) {
   const e = formatEatery(row);
   return (
-    <div className={`result-row${topPick ? " top-pick" : ""}`}>
+    <div className="hero-card">
+      <div className="hero-photo">
+        <span className="hero-emoji">{e.emoji}</span>
+        {e.img && (
+          <img
+            src={e.img}
+            alt=""
+            draggable={false}
+            onError={(ev) => {
+              ev.target.style.display = "none";
+            }}
+          />
+        )}
+        <div className="hero-scrim" />
+        <div className="hero-stamp">IT&rsquo;S A MAKAN MATCH</div>
+      </div>
+      <div className="hero-info">
+        <h2 className="hero-name">{e.name}</h2>
+        <div className="hero-meta">
+          <Meta e={e} row={row} />
+        </div>
+        <div className="hero-votes">{voteLabel(row)} · everyone in</div>
+        <MapsLink row={row} />
+      </div>
+    </div>
+  );
+}
+
+function ResultRow({ row, tier }) {
+  const e = formatEatery(row);
+  return (
+    <div className={`result-row tier-${tier}`}>
       <div className="result-thumb">
         <span>{e.emoji}</span>
         {e.img && (
@@ -22,36 +85,26 @@ function ResultRow({ row, topPick }) {
           />
         )}
       </div>
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
         <div className="result-name">{e.name}</div>
         <div className="result-sub">
-          {e.cuisine} · {e.dist} · {e.price}
+          <Meta e={e} row={row} />
         </div>
-        {row.maps_uri && (
-          <a
-            className="maps-link"
-            href={row.maps_uri}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open in Maps ↗
-          </a>
-        )}
+        <div className={`result-votes tier-${tier}`}>{voteLabel(row)}</div>
+        <MapsLink row={row} />
       </div>
       <div className="result-score">
-        <div
-          className="result-score-count"
-          style={{ color: row.unanimous ? "#1F7A4D" : "#B8860B" }}
-        >
-          {row.yes_count}/{row.participant_count}
+        <div className={`result-score-count tier-${tier}`}>
+          {row.yes_count}/{row.vote_count}
         </div>
-        {row.unanimous && <div className="result-all-in">ALL IN</div>}
+        {tier === "allin" && <div className="result-all-in">ALL IN</div>}
+        {tier === "sweep" && <div className="result-sweep">SWEEP</div>}
       </div>
     </div>
   );
 }
 
-export default function Results({ session, isHost }) {
+export default function Results({ session, participants, isHost }) {
   const navigate = useNavigate();
   const [rows, setRows] = useState(null);
   const [error, setError] = useState(null);
@@ -95,37 +148,85 @@ export default function Results({ session, isHost }) {
   }
 
   const allIn = rows.filter((r) => r.unanimous);
-  const majority = rows.filter((r) => !r.unanimous);
+  const sweeps = rows.filter((r) => r.clean_sweep);
+  const crowd = rows.filter((r) => !r.unanimous && !r.clean_sweep);
+  const [hero, ...moreAllIn] = allIn;
+
+  const revealer = participants.find((p) => p.user_id === session.revealed_by);
+  const headcount = participants.length;
+  const context = [
+    `${headcount} of you swiped`,
+    session.revealed_by
+      ? `revealed by ${revealer?.display_name ?? "the host"}`
+      : "everyone finished",
+  ].join(" · ");
+
+  // One running index across every card so the whole page deals itself out
+  // top to bottom, tier headings included.
+  let step = 0;
+  const dealt = () => ({ animationDelay: `${step++ * STAGGER_MS}ms` });
 
   return (
     <div className="shell">
       <Logo />
-      <div className="results-heading">
-        {rows.length > 0 ? "It's a makan match! 🎉" : "No matches 😅"}
+      <div className="results-heading reveal-in" style={dealt()}>
+        {rows.length > 0 ? "Here's the verdict" : "No matches 😅"}
       </div>
+      <div className="results-context reveal-in" style={dealt()}>{context}</div>
+
       <div className="results-list">
-        {allIn.length > 0 && (
+        {hero && (
+          <div className="hero-wrap" style={dealt()}>
+            <HeroCard row={hero} />
+          </div>
+        )}
+
+        {moreAllIn.length > 0 && (
           <>
-            <div className="results-tier-heading">ALL IN</div>
-            {allIn.map((r, i) => (
-              <ResultRow key={r.id} row={r} topPick={i === 0} />
+            <div className="results-tier-heading reveal-in" style={dealt()}>
+              ALSO ALL IN
+            </div>
+            {moreAllIn.map((r) => (
+              <div key={r.id} className="reveal-in" style={dealt()}>
+                <ResultRow row={r} tier="allin" />
+              </div>
             ))}
           </>
         )}
-        {majority.length > 0 && (
+
+        {sweeps.length > 0 && (
           <>
-            <div className="results-tier-heading">MAJORITY PICKS</div>
-            {majority.map((r, i) => (
-              <ResultRow key={r.id} row={r} topPick={allIn.length === 0 && i === 0} />
+            <div className="results-tier-heading reveal-in" style={dealt()}>
+              CLEAN SWEEP · EVERYONE WHO SAW IT SAID YES
+            </div>
+            {sweeps.map((r) => (
+              <div key={r.id} className="reveal-in" style={dealt()}>
+                <ResultRow row={r} tier="sweep" />
+              </div>
             ))}
           </>
         )}
+
+        {crowd.length > 0 && (
+          <>
+            <div className="results-tier-heading reveal-in" style={dealt()}>
+              CROWD FAVOURITES
+            </div>
+            {crowd.map((r) => (
+              <div key={r.id} className="reveal-in" style={dealt()}>
+                <ResultRow row={r} tier="crowd" />
+              </div>
+            ))}
+          </>
+        )}
+
         {rows.length === 0 && (
-          <p className="results-empty">
+          <p className="results-empty reveal-in" style={dealt()}>
             Everyone too picky lah. Try a wider radius?
           </p>
         )}
       </div>
+
       {rows.length === 0 &&
         (isHost ? (
           <button
