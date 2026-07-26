@@ -56,12 +56,38 @@ the `fetch-eateries` Edge Function; photos are proxied and cached by
 Before touching the Places field mask or call patterns, read
 `docs/COSTS.md`.
 
-## Two-window smoke test
+## Reveal and late joins (Phase 4)
+
+Migrations `0003_reveal.sql` and `0004_reveal_context.sql` cover this phase —
+`npx supabase db push` is all that is needed. No new secrets, buckets, or
+Edge Function deploys.
+
+Two behaviours change how results read:
+
+- **The host can reveal at any time**, and **people can join after swiping has
+  started**. Participation is therefore partial by design.
+- Because of that, **match strength is measured per eatery — against the votes
+  actually cast on that card, not session headcount.** A card two people saw
+  and both liked is a 2/2 clean sweep, not a 2/3. Every row shows its
+  `yes/votes` fraction plus how many people never saw it, so the number is
+  never ambiguous.
+
+Three tiers on the results screen: `unanimous` (everyone voted and all said
+yes) leads with a hero card, then `clean_sweep`, then the rest ranked by yes
+count and yes share. `finish_swiping` is unchanged — a session where everyone
+finishes their deck still closes itself without the host touching anything.
+
+## Multi-window smoke test
 
 1. Window A: Start a session → note the room code.
 2. Window B (incognito): Join with the code → both lobbies show 2 people live.
 3. A: Start swiping → both windows enter the deck.
-4. Swipe differently in each window; progress counts update live.
-5. Finish both decks → both windows land on results together; unanimous picks
-   show ALL IN, then majority picks.
-6. Refresh a window mid-deck → it resumes with the remaining cards.
+4. Window C: join mid-deck → lands straight on the deck with the full card
+   list, and shows up in everyone's progress row tagged "joined late".
+5. Swipe differently in each window; progress counts update live and nobody
+   can see anyone else's choices.
+6. A (host): "Reveal now" → the sheet names who is still unfinished → confirm
+   → all three windows land on results together.
+7. Refresh a window mid-deck → it resumes on the correct next card.
+8. Drop one window's network for ~20s and restore it → it re-syncs, and if the
+   reveal happened while it was offline it lands on results, not a dead deck.
