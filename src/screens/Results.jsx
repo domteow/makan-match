@@ -17,11 +17,23 @@ function voteLabel(row) {
   return `${base} · ${missing} didn't vote`;
 }
 
+// Hours matter most on this screen: it is the one people act on, and a session
+// can run long enough for a place to close between the fetch and the decision.
+// So the closing time shows whenever it is known, not only when it is imminent.
+function Hours({ e }) {
+  const label = e.closesLabel || (e.hoursUnknown ? "hours unknown" : null);
+  if (!label) return null;
+  return (
+    <span className={`hours-note${e.closingSoon ? " soon" : ""}`}> · {label}</span>
+  );
+}
+
 function Meta({ e, row }) {
   return (
     <>
       {[e.cuisine, e.dist, e.price].filter(Boolean).join(" · ")}
       {row.rating != null && ` · ★ ${row.rating}`}
+      <Hours e={e} />
     </>
   );
 }

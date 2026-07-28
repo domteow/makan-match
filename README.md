@@ -77,6 +77,35 @@ yes) leads with a hero card, then `clean_sweep`, then the rest ranked by yes
 count and yes share. `finish_swiping` is unchanged — a session where everyone
 finishes their deck still closes itself without the host touching anything.
 
+## Open now (Phase 4.5)
+
+Migration `0005_hours.sql` adds `eateries.open_now` / `eateries.closes_at` and
+extends `get_session_state` and `get_results` to return them. This phase does
+need an Edge Function redeploy, because the Places field mask changed:
+
+```sh
+npx supabase db push
+npx supabase functions deploy fetch-eateries   # place-photo is unchanged
+```
+
+The policy, in one line: **closed is dropped, unknown is kept and flagged.**
+
+- `sessions.filters.open_now` defaults to **on**. With it on, places Google
+  reports as closed are dropped in `fetch-eateries`.
+- Places with **no hours data at all** are kept and tagged "hours unknown".
+  Google has no hours for a large share of Singapore F&B — hawker stalls,
+  coffeeshop units, small tenants — and excluding them would remove exactly
+  the places people actually eat at.
+- **Closing soon is not hidden.** A place closing within 45 minutes gets an
+  amber "closes 9:00pm" chip; whether that leaves time to walk over and eat is
+  the group's call.
+- If fewer than 8 places survive the filters, the session does **not** start.
+  The deck is written but held in the lobby and the host is offered a wider
+  radius or "swipe these anyway" — the latter costs no extra Places call.
+
+Hours are stamped once, at fetch time, and never re-checked; see
+`docs/COSTS.md` for why, and what the closing-time display does about it.
+
 ## Multi-window smoke test
 
 1. Window A: Start a session → note the room code.
