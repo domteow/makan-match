@@ -36,7 +36,7 @@ export default function Join({ mode }) {
   const [locating, setLocating] = useState(false);
   const [geoFailed, setGeoFailed] = useState(false);
   const [priceMax, setPriceMax] = useState(null);
-  const [openNow, setOpenNow] = useState(false);
+  const [openNow, setOpenNow] = useState(true); // closed places are the default no
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -175,6 +175,7 @@ export default function Join({ mode }) {
               </div>
             </div>
             <div className="field">
+              <span className="field-label">OPENING HOURS</span>
               <div className="filter-row">
                 <button
                   type="button"
@@ -184,6 +185,12 @@ export default function Join({ mode }) {
                   {openNow ? "✓ " : ""}Open now only
                 </button>
               </div>
+              {openNow && (
+                <p className="field-hint">
+                  Hides places Google says are closed. Stalls with no hours
+                  listed still show, tagged &ldquo;hours unknown&rdquo;.
+                </p>
+              )}
             </div>
           </>
         )}

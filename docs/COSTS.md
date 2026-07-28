@@ -13,6 +13,11 @@ constraint if two invocations slip through. A "widen and redeal" wipes the
 deck and spends one more call — that is a new deal the host explicitly asked
 for, and still one call per deal.
 
+The open-now thin-deck guard does **not** cost a call. When too few places
+survive the filters the function still writes the deck, it just holds the
+session in the lobby; the host's "swipe these anyway" re-invocation lands on
+the idempotent path and calls nothing.
+
 ### Field mask and SKU
 
 ```
@@ -27,23 +32,41 @@ places.userRatingCount     <- Enterprise
 places.priceLevel          <- Enterprise
 places.photos
 places.googleMapsUri
-places.currentOpeningHours.openNow   (only when the open_now filter is set; Enterprise)
+places.currentOpeningHours.openNow         <- Pro
+places.currentOpeningHours.nextCloseTime   <- Pro
+places.regularOpeningHours.openNow         <- Pro
 ```
 
 A request is billed at the SKU of its most expensive field.
 `rating` / `userRatingCount` / `priceLevel` put every `fetch-eateries` call in
 the **Enterprise SKU** (Nearby Search Enterprise). The other fields
-(`types`, `photos`, `googleMapsUri`, etc.) are Essentials/Pro tier and add
-nothing on top; `currentOpeningHours` is also Enterprise, so toggling
-`open_now` does not change the SKU either.
+(`types`, `photos`, `googleMapsUri`, the opening-hours fields) are
+Essentials/Pro tier and add nothing on top.
+
+That is why the hours fields are requested on **every** call rather than only
+when the `open_now` filter is on: at this SKU they are free, and the cards
+want them either way — "hours unknown" and "closes 9:00pm" are shown whether
+or not the filter is filtering.
 
 **Do not add fields to the mask without checking the pricing table** — a
 single Enterprise + Atmosphere field (e.g. `reviews`, `servesBeer`) bumps
 every call to the highest SKU.
 
-There is no price or open-now request parameter on Nearby Search, which is
-why `price_max` is filtered client-side and `open_now` post-filtered in the
-function from `currentOpeningHours.openNow`.
+There is no price or open-now request parameter on Nearby Search — Text Search
+has `openNow`, Nearby Search does not — which is why `price_max` is filtered
+client-side and `open_now` is post-filtered in the function.
+
+### Hours go stale, and that is deliberate
+
+`open_now` and `closes_at` are evaluated **once, at fetch time**. A long
+session, or a redeal much later, can show state that has moved on.
+
+The mitigation is displaying `closes_at` (on the cards when it is imminent, on
+every results row where it is known), not re-checking. **Do not add polling or
+re-fetch logic.** Refreshing hours means another Nearby Search per refresh —
+the per-session cost stops being 1 and starts being "however long the group
+argued" — for a place that, at worst, the group can see the closing time of
+and judge for themselves.
 
 ## Place Photos (`place-photo`)
 

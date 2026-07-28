@@ -104,6 +104,10 @@ export default function SwipeCard({ eatery, onSwipe, isTop, stackIndex, forcedDi
           <div className="swipe-card-chips">
             {eatery.rating != null && <Chip>★ {eatery.rating}</Chip>}
             {eatery.dist && <Chip>{eatery.dist} away</Chip>}
+            {/* Open is the unremarkable default — no badge for it. Only the
+                two cases the group needs to weigh get a chip. */}
+            {eatery.hoursUnknown && <Chip tone="muted">hours unknown</Chip>}
+            {eatery.closingSoon && <Chip tone="warn">{eatery.closesLabel}</Chip>}
           </div>
         </div>
       </div>

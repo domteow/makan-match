@@ -23,15 +23,23 @@ const FIELD_MASK = [
   "places.priceLevel",
   "places.photos",
   "places.googleMapsUri",
+  // Hours are always requested, not just when the open_now filter is on: the
+  // cards flag "hours unknown" and "closes 9:00pm" either way, and the fields
+  // are free at this SKU (see below).
+  "places.currentOpeningHours.openNow",
+  "places.currentOpeningHours.nextCloseTime",
+  "places.regularOpeningHours.openNow",
 ].join(",");
 // NOTE: rating/userRatingCount/priceLevel/photos put this call in the
 // Enterprise SKU. Do not add fields without checking the pricing table.
-// (types is a Pro-tier field; currentOpeningHours, added below only when
-// the open_now filter is set, is Enterprise-tier — neither raises the
-// call's SKU beyond Enterprise. See docs/COSTS.md.)
+// (types and the opening-hours fields are Pro-tier, so they cost nothing on
+// top of Enterprise. See docs/COSTS.md.)
 
 const MIN_RATING_COUNT = 15; // below this, ratings are noise
 const MAX_DECK_SIZE = 20;
+// Below this the deck is too thin to be worth swiping. We do not start the
+// session; the host is offered a wider radius instead.
+const MIN_DECK_SIZE = 8;
 
 // distance in metres between two lat/lng points (haversine)
 function distanceMeters(
@@ -60,6 +68,17 @@ const PRICE_LEVEL_MAP: Record<string, number> = {
 };
 const toPriceLevel = (v?: string) =>
   v && PRICE_LEVEL_MAP[v] ? PRICE_LEVEL_MAP[v] : null;
+
+// currentOpeningHours accounts for holidays and special days; regularOpeningHours
+// is the fallback when Google has no current-hours record. null means Google has
+// no hours at all for the place — a large share of Singapore F&B (hawker stalls,
+// coffeeshop units, small tenants). Never guess "closed" from missing data.
+const toOpenNow = (p: any): boolean | null =>
+  p.currentOpeningHours?.openNow ?? p.regularOpeningHours?.openNow ?? null;
+
+// RFC3339, only ever present on currentOpeningHours.
+const toClosesAt = (p: any): string | null =>
+  p.currentOpeningHours?.nextCloseTime ?? null;
 
 // "chinese_restaurant" -> "Chinese Restaurant"
 const prettifyType = (t?: string) =>
@@ -140,18 +159,14 @@ Deno.serve(async (req) => {
   if (existing && existing > 0) return startSwiping(existing);
 
   const filters = session.filters ?? {};
-  const openNow = filters.open_now === true;
-  // currentOpeningHours is only requested when the filter needs it.
-  const fieldMask = openNow
-    ? `${FIELD_MASK},places.currentOpeningHours.openNow`
-    : FIELD_MASK;
+  const openNowFilter = filters.open_now !== false; // defaults on
 
   const res = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-Goog-Api-Key": Deno.env.get("GOOGLE_PLACES_API_KEY")!,
-      "X-Goog-FieldMask": fieldMask,
+      "X-Goog-FieldMask": FIELD_MASK,
     },
     body: JSON.stringify({
       includedTypes: ["restaurant", "cafe", "meal_takeaway"],
@@ -185,12 +200,25 @@ Deno.serve(async (req) => {
   // Belt and braces on top of excludedTypes: Google still occasionally
   // returns hotel/mall pins whose primary type matched includedTypes.
   const BANNED_TYPES = ["lodging", "shopping_mall"];
-  const rows = places
+  const candidates = places
     .filter(
       (p: any) => !p.types?.some((t: string) => BANNED_TYPES.includes(t))
     )
-    .filter((p: any) => (p.userRatingCount ?? 0) >= MIN_RATING_COUNT)
-    .filter((p: any) => !openNow || p.currentOpeningHours?.openNow !== false)
+    .filter((p: any) => (p.userRatingCount ?? 0) >= MIN_RATING_COUNT);
+
+  // Nearby Search (New) has no openNow request parameter (Text Search does),
+  // so the filter is applied here over the hours fields in the mask.
+  //
+  // false -> dropped. true -> kept. null -> KEPT, and flagged in the UI as
+  // "hours unknown". Dropping unknowns would gut the deck and remove exactly
+  // the places people actually eat at. "Closing soon" is kept and flagged too:
+  // whether there is time to walk over and eat is the group's call, not ours.
+  const closedDropped = openNowFilter
+    ? candidates.filter((p: any) => toOpenNow(p) === false).length
+    : 0;
+
+  const rows = candidates
+    .filter((p: any) => !openNowFilter || toOpenNow(p) !== false)
     .slice(0, MAX_DECK_SIZE)
     .map((p: any, i: number) => ({
       session_id,
@@ -205,6 +233,8 @@ Deno.serve(async (req) => {
       ),
       address: p.formattedAddress ?? null,
       photo_ref: p.photos?.[0]?.name ?? null,
+      open_now: toOpenNow(p),
+      closes_at: toClosesAt(p),
       lat: p.location.latitude,
       lng: p.location.longitude,
       maps_uri: p.googleMapsUri ?? null,
@@ -229,6 +259,20 @@ Deno.serve(async (req) => {
     }
     console.error("Eatery insert failed", insertError);
     return jsonResponse(500, { error: "EATERY_INSERT_FAILED" });
+  }
+
+  // Too few to swipe on: hold the session in the lobby and let the host decide
+  // between a wider radius and starting anyway. The deck is already written, so
+  // "start anyway" is the idempotent path above — it costs no second Places
+  // call, and a redeal wipes these rows before dealing again.
+  if (rows.length < MIN_DECK_SIZE) {
+    return jsonResponse(200, {
+      ok: false,
+      thin_deck: true,
+      eatery_count: rows.length,
+      closed_dropped: closedDropped,
+      open_now: openNowFilter,
+    });
   }
 
   return startSwiping(rows.length);

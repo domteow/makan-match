@@ -9,6 +9,8 @@
   --mist: #9dc4bc;
   --mist-light: #c9ddd8;
   --taupe: #5a5148;
+  --amber: #e0a021;
+  --amber-ink: #96620a; /* amber legible as text on cream */
   --cream-shade: #f3e9d0;
   --cream-shade-2: #efe3c4;
   --font-display: "Archivo Black", system-ui, sans-serif;
@@ -133,6 +135,19 @@ body {
   padding: 4px 12px;
   font-size: 12.5px;
   font-weight: 700;
+}
+
+/* Google has no hours for this place — a caveat, not a warning. */
+.chip-muted {
+  background: var(--cream-shade-2);
+  color: var(--taupe);
+  border: 1.5px solid var(--cream-shade-2);
+}
+
+/* Closing within the hour. Amber: worth a look, not a stop. */
+.chip-warn {
+  background: var(--amber);
+  color: var(--ink);
 }
 
 /* Queue-chit / hawker-ticket room code */
@@ -433,6 +448,16 @@ body {
   color: var(--taupe);
 }
 
+/* Closing time on the screen the group acts on. */
+.hours-note {
+  white-space: nowrap;
+}
+
+.hours-note.soon {
+  color: var(--amber-ink);
+  font-weight: 800;
+}
+
 .result-score {
   text-align: center;
   flex-shrink: 0;
@@ -553,6 +578,18 @@ body {
 
 .screen-status {
   color: var(--mist-light);
+  font-weight: 700;
+  text-align: center;
+}
+
+/* Thin deck: not an error, a decision the host has to make. */
+.lobby-notice {
+  margin-top: 20px;
+  padding: 12px 14px;
+  border: 2px solid var(--amber);
+  border-radius: 12px;
+  color: var(--amber);
+  font-size: 13.5px;
   font-weight: 700;
   text-align: center;
 }

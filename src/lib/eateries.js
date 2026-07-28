@@ -19,11 +19,17 @@ export async function setSessionLocation(
 // Host's Start action: the fetch-eateries Edge Function deals the deck from
 // Google Places and flips session.status to 'swiping'. All clients navigate
 // via the sessions UPDATE they're already subscribed to.
+//
+// One non-error outcome does NOT start the session: too few places survived
+// the filters. The deck is written but held in the lobby, and the response
+// comes back as { thin_deck: true, eatery_count, closed_dropped, open_now }
+// so the host can widen the radius instead. Calling this again starts the
+// held deck as-is, without a second Places call.
 export async function startSwiping(sessionId) {
-  const { error } = await supabase.functions.invoke("fetch-eateries", {
+  const { data, error } = await supabase.functions.invoke("fetch-eateries", {
     body: { session_id: sessionId },
   });
-  if (!error) return;
+  if (!error) return data ?? {};
   let code = null;
   try {
     code = (await error.context?.json?.())?.error ?? null;
