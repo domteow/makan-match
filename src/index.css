@@ -945,6 +945,199 @@ body {
   color: var(--taupe);
 }
 
+/* ---------- Sharing and joining ---------- */
+
+/* The QR lives inside the room-code chit, under the code. Same cream, same
+   ink, so it reads as part of the ticket rather than a widget dropped on it. */
+.qr-code {
+  display: block;
+  width: 200px;
+  height: 200px;
+  margin: 14px auto 0;
+  border-radius: 8px;
+}
+
+.qr-expand {
+  display: block;
+  margin: 10px auto 0;
+  padding: 10px 14px;
+  min-height: 44px;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--taupe);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Full-bleed and light: scanning across a table is mostly a question of how
+   many millimetres each module gets and how much light the screen throws. */
+.qr-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: var(--cream);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px;
+  cursor: pointer;
+}
+
+.qr-fullscreen-code {
+  font-family: var(--font-display);
+  font-size: 40px;
+  letter-spacing: 4px;
+  color: var(--ink);
+}
+
+.qr-code-large {
+  display: block;
+  width: min(86vw, 62vh);
+  height: min(86vw, 62vh);
+}
+
+.qr-fullscreen-hint {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--taupe);
+  text-align: center;
+}
+
+.qr-fullscreen-close {
+  min-width: 160px;
+}
+
+.share-btn {
+  margin-top: 16px;
+  width: 100%;
+  max-width: 320px;
+}
+
+/* Late shares from the deck: someone turned up after it went live. Compact
+   next to the status line, but still a 44px target. */
+.deck-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 330px;
+  margin-top: 4px;
+}
+
+.deck-share {
+  margin-left: auto;
+  padding: 0 12px;
+  min-height: 44px;
+  background: none;
+  border: 2px solid var(--mist);
+  border-radius: 999px;
+  color: var(--mist);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.deck-share:active {
+  background: rgba(253, 246, 227, 0.12);
+}
+
+/* The pick is the thing that goes in the chat, so its share control is a
+   button on the card, not a link tucked under it. */
+.hero-share {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+  font-size: 15px;
+  padding: 12px 18px;
+}
+
+.row-share {
+  margin-top: 10px;
+  font-size: 13px;
+  padding: 10px 14px;
+  box-shadow: 0 3px 0 var(--ink);
+}
+
+/* Clipboard fallback confirmation. Fixed so it reads the same whichever
+   screen fired it. */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 40;
+  max-width: min(90vw, 360px);
+  background: var(--ink);
+  color: var(--cream);
+  border-radius: 999px;
+  padding: 12px 20px;
+  font-size: 13.5px;
+  font-weight: 700;
+  text-align: center;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.35);
+  animation: toast-up 180ms ease both;
+}
+
+@keyframes toast-up {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* /j/:code — the code is already known, so the screen only asks for a name. */
+.join-link-invite {
+  margin-top: 20px;
+  color: var(--mist-light);
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.join-link-code {
+  font-family: var(--font-display);
+  font-size: 24px;
+  letter-spacing: 3px;
+  color: var(--cream);
+  margin-left: 6px;
+}
+
+.join-link-form {
+  margin-top: 18px;
+}
+
+.join-link-message {
+  margin-top: 20px;
+  color: var(--cream);
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--mist);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+  min-height: 44px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .reveal-in,
   .hero-wrap,
@@ -953,5 +1146,10 @@ body {
     animation: none;
     opacity: 1;
     transform: none;
+  }
+
+  /* The toast is centred by its transform, so only the animation goes. */
+  .toast {
+    animation: none;
   }
 }

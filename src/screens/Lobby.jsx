@@ -1,6 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Logo from "../components/Logo.jsx";
+import QrChit from "../components/QrChit.jsx";
+import ShareButton from "../components/ShareButton.jsx";
 import { startSwiping, resetSessionForRedeal } from "../lib/eateries.js";
+import { joinUrl, sessionSharePayload } from "../lib/share.js";
 
 const AVATAR_COLORS = ["#E8542F", "#2E8B57", "#D4A017", "#7B5EA7", "#C8331F", "#1F7A4D"];
 
@@ -8,6 +11,11 @@ export default function Lobby({ sessionId, code, participants, userId, isHost })
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [thin, setThin] = useState(null); // fetch-eateries' thin-deck response
+
+  // Built up front, not on tap: the share handler must reach navigator.share
+  // without awaiting anything (see lib/share.js).
+  const url = useMemo(() => joinUrl(code), [code]);
+  const payload = useMemo(() => sessionSharePayload(code), [code]);
 
   // force=true accepts a thin deck the host has already been warned about.
   // widenFirst redeals from scratch and can come back thin again, so it does
@@ -48,10 +56,18 @@ export default function Lobby({ sessionId, code, participants, userId, isHost })
   return (
     <div className="shell">
       <Logo />
+      {/* Two ways in, for two situations: scan it if you're at the same table,
+          share the link if you're deciding over a group chat. */}
       <div className="room-code-ticket">
         <div className="room-code-label">ROOM CODE</div>
         <div className="room-code-value">{code}</div>
+        <QrChit url={url} code={code} />
       </div>
+      <ShareButton
+        payload={payload}
+        label="Share the link ↗"
+        className="btn btn-cream share-btn"
+      />
       <div className="lobby-list">
         <div className="lobby-list-heading">
           IN THE QUEUE ({participants.length})

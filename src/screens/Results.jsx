@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Logo from "../components/Logo.jsx";
+import ShareButton from "../components/ShareButton.jsx";
 import { getResults } from "../lib/swipes.js";
 import { resetSessionForRedeal } from "../lib/eateries.js";
+import { eaterySharePayload } from "../lib/share.js";
 import { formatEatery } from "../lib/format.js";
 
 const STAGGER_MS = 60;
@@ -47,6 +49,27 @@ function MapsLink({ row }) {
   );
 }
 
+// The message that goes in the group chat once it's settled, so it carries the
+// name, cuisine, distance and the Maps link — not a link back into the app,
+// which by now has nothing left to say.
+function ShareWinner({ row, e, className }) {
+  const payload = eaterySharePayload({
+    name: row.name,
+    cuisine: e.cuisine,
+    distanceLabel: e.dist,
+    mapsUri: row.maps_uri,
+  });
+  return (
+    <ShareButton
+      payload={payload}
+      copyText={payload.text} // the bare Maps link would lose the name
+      label="Share the pick ↗"
+      copiedLabel="Copied — paste it in the chat"
+      className={className}
+    />
+  );
+}
+
 // The one card that won outright: full-bleed photo, brand orange, the
 // biggest type on the screen.
 function HeroCard({ row }) {
@@ -75,12 +98,13 @@ function HeroCard({ row }) {
         </div>
         <div className="hero-votes">{voteLabel(row)} · everyone in</div>
         <MapsLink row={row} />
+        <ShareWinner row={row} e={e} className="btn btn-pandan hero-share" />
       </div>
     </div>
   );
 }
 
-function ResultRow({ row, tier }) {
+function ResultRow({ row, tier, isWinner }) {
   const e = formatEatery(row);
   return (
     <div className={`result-row tier-${tier}`}>
@@ -104,6 +128,7 @@ function ResultRow({ row, tier }) {
         </div>
         <div className={`result-votes tier-${tier}`}>{voteLabel(row)}</div>
         <MapsLink row={row} />
+        {isWinner && <ShareWinner row={row} e={e} className="btn btn-pandan row-share" />}
       </div>
       <div className="result-score">
         <div className={`result-score-count tier-${tier}`}>
@@ -164,6 +189,11 @@ export default function Results({ session, participants, isHost }) {
   const crowd = rows.filter((r) => !r.unanimous && !r.clean_sweep);
   const [hero, ...moreAllIn] = allIn;
 
+  // The pick is whatever sorted to the top — the hero when something went all
+  // in, otherwise the best of the lower tiers. Only that one carries the share
+  // control; a share button on every row is a list, not a decision.
+  const winnerId = hero ? null : rows[0]?.id;
+
   const revealer = participants.find((p) => p.user_id === session.revealed_by);
   const headcount = participants.length;
   const context = [
@@ -213,7 +243,7 @@ export default function Results({ session, participants, isHost }) {
             </div>
             {sweeps.map((r) => (
               <div key={r.id} className="reveal-in" style={dealt()}>
-                <ResultRow row={r} tier="sweep" />
+                <ResultRow row={r} tier="sweep" isWinner={r.id === winnerId} />
               </div>
             ))}
           </>
@@ -226,7 +256,7 @@ export default function Results({ session, participants, isHost }) {
             </div>
             {crowd.map((r) => (
               <div key={r.id} className="reveal-in" style={dealt()}>
-                <ResultRow row={r} tier="crowd" />
+                <ResultRow row={r} tier="crowd" isWinner={r.id === winnerId} />
               </div>
             ))}
           </>
