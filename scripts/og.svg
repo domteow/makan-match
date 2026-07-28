@@ -1,0 +1,71 @@
+<!--
+  Source art for the link-unfurl card. Rasterised to public/og.png at
+  1200x630 by scripts/build-og.mjs — edit here, never the PNG.
+
+  Deliberately free of emoji and external images: the rasteriser loads only
+  the two brand fonts, so anything it can't draw as a shape wouldn't render.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <radialGradient id="glow" cx="20%" cy="10%" r="55%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.09" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="#0E3B36" />
+  <rect width="1200" height="630" fill="url(#glow)" />
+
+  <!-- Wordmark -->
+  <g font-family="Archivo Black" font-size="118" letter-spacing="2">
+    <text x="80" y="270" fill="#FDF6E3">MAKAN</text>
+    <text x="80" y="392" fill="#E8542F">MATCH</text>
+  </g>
+
+  <text x="84" y="452" font-family="Public Sans" font-weight="800" font-size="31" fill="#9DC4BC">
+    swipe. match. makan.
+  </text>
+
+  <!-- Queue chit, same treatment as the room-code ticket in the app -->
+  <g transform="translate(80,492)">
+    <rect width="392" height="72" rx="16" fill="none" stroke="#9DC4BC" stroke-width="3"
+          stroke-dasharray="12 9" />
+    <text x="24" y="46" font-family="Public Sans" font-weight="800" font-size="24" fill="#C9DDD8">
+      Decide where to eat, together.
+    </text>
+  </g>
+
+  <!-- Back card of the deck, peeking out -->
+  <g transform="translate(700,118) rotate(-7)">
+    <rect width="300" height="384" rx="26" fill="#F3E9D0" stroke="#1A1512" stroke-width="6" />
+  </g>
+
+  <!-- Front card -->
+  <g transform="translate(772,140) rotate(5)">
+    <rect width="312" height="392" rx="26" fill="#FDF6E3" stroke="#1A1512" stroke-width="6" />
+
+    <!-- Photo well -->
+    <path d="M3 29a26 26 0 0 1 26-26h254a26 26 0 0 1 26 26v235H3z" fill="#E8542F" />
+
+    <!-- Bowl of noodles, drawn rather than set in emoji -->
+    <g transform="translate(156,150)" fill="none" stroke="#FDF6E3" stroke-width="9"
+       stroke-linecap="round">
+      <path d="M-58-46c10-12 22-12 32 0M-14-54c10-12 22-12 32 0M30-46c10-12 22-12 32 0" />
+      <path d="M-84 2h168a84 84 0 0 1-168 0z" fill="#FDF6E3" stroke="none" />
+      <path d="M-96 2h192" stroke-width="13" />
+    </g>
+
+    <!-- SHIOK stamp, same corner and rake as .stamp-shiok in the app -->
+    <g transform="translate(26,30) rotate(-14)">
+      <rect width="176" height="60" rx="10" fill="#FDF6E3" fill-opacity="0.92"
+            stroke="#2FBF71" stroke-width="5" />
+      <text x="88" y="43" text-anchor="middle" font-family="Archivo Black" font-size="32"
+            letter-spacing="2" fill="#2FBF71">SHIOK</text>
+    </g>
+
+    <text x="24" y="316" font-family="Archivo Black" font-size="32" fill="#1A1512">CHICKEN RICE</text>
+    <text x="24" y="350" font-family="Public Sans" font-weight="700" font-size="21" fill="#5A5148">
+      Hawker · 300m · $
+    </text>
+  </g>
+</svg>

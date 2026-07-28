@@ -3,6 +3,8 @@ import Logo from "../components/Logo.jsx";
 import SwipeDeck from "../components/SwipeDeck.jsx";
 import ProgressRow from "../components/ProgressRow.jsx";
 import RevealSheet from "../components/RevealSheet.jsx";
+import ShareButton from "../components/ShareButton.jsx";
+import { sessionSharePayload } from "../lib/share.js";
 import { recordSwipe, finishSwiping, getMySwipedEateryIds } from "../lib/swipes.js";
 import { revealNow, joinedLate } from "../lib/session.js";
 import { passesPriceFilter } from "../lib/eateries.js";
@@ -79,6 +81,13 @@ export default function Swipe({ session, participants, eateries, userId, isHost 
   const others = participants.filter((p) => p.user_id !== userId);
   const done = deck.length === 0;
 
+  // Late shares: someone turns up after the deck went live and needs the link.
+  // Built here rather than in the handler so the share stays inside the gesture.
+  const sharePayload = useMemo(
+    () => sessionSharePayload(session.code),
+    [session.code]
+  );
+
   if (!swipedIds) {
     return (
       <div className="shell">
@@ -91,9 +100,16 @@ export default function Swipe({ session, participants, eateries, userId, isHost 
   return (
     <div className="shell">
       <Logo />
-      <div className="deck-status">
-        {done ? "You're done!" : `${deck.length} left · room ${session.code}`}
-        {joinedLate(me, session) && !done && " · you joined late"}
+      <div className="deck-bar">
+        <div className="deck-status">
+          {done ? "You're done!" : `${deck.length} left · room ${session.code}`}
+          {joinedLate(me, session) && !done && " · you joined late"}
+        </div>
+        <ShareButton
+          payload={sharePayload}
+          label="Share ↗"
+          className="deck-share"
+        />
       </div>
       {error && <p className="form-error">{error}</p>}
 

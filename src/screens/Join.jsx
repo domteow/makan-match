@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import Logo from "../components/Logo.jsx";
 import { createSession, joinSession } from "../lib/session.js";
 import { setSessionLocation } from "../lib/eateries.js";
+import { getRememberedName, rememberName } from "../lib/prefs.js";
 
 // Manual fallback when geolocation is denied/unavailable. MVP: a few SG areas.
 const SG_AREAS = [
@@ -28,7 +29,9 @@ export default function Join({ mode }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isStart = mode === "start";
-  const [name, setName] = useState("");
+  // Same remembered name as the /j/:code path, prefilled rather than assumed —
+  // this screen already has fields on it, so there's nothing to save by hiding it.
+  const [name, setName] = useState(() => getRememberedName() ?? "");
   const [code, setCode] = useState(
     (searchParams.get("code") || "").toUpperCase()
   );
@@ -88,6 +91,7 @@ export default function Join({ mode }) {
       } else {
         res = await joinSession(code.trim(), name.trim());
       }
+      rememberName(name); // only once it worked
       navigate(`/s/${res.code}`);
     } catch (err) {
       setError(err.message);

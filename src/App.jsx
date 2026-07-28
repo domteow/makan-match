@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Routes, Route } from "react-router-dom";
 import Home from "./screens/Home.jsx";
 import Join from "./screens/Join.jsx";
+import JoinLink from "./screens/JoinLink.jsx";
 import Session from "./screens/Session.jsx";
 import Logo from "./components/Logo.jsx";
 import { ensureSignedIn } from "./lib/auth.js";
@@ -43,6 +44,8 @@ export default function App() {
       <Route path="/" element={<Home />} />
       <Route path="/start" element={<Join mode="start" />} />
       <Route path="/join" element={<Join mode="join" />} />
+      {/* Shared links and QR codes land here — short path, code already known. */}
+      <Route path="/j/:code" element={<JoinLink />} />
       <Route path="/s/:code" element={<Session userId={userId} />} />
     </Routes>
   );

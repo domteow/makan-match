@@ -6,6 +6,27 @@
     <meta name="theme-color" content="#0E3B36" />
     <title>MakanMatch — swipe. match. makan.</title>
     <meta name="description" content="Stop the 'anything lah' loop. Start a session, everyone swipes, eat where you all match." />
+
+    <!--
+      Link previews. %SITE_URL% is substituted at build time from VITE_SITE_URL
+      (see vite.config.js) because og:image has to be absolute.
+
+      These are static, and deliberately so: the app is an SPA, so every route
+      including /j/CODE serves this same file. A per-session preview — the
+      host's name, who's already in the queue — would need server-rendered HTML
+      for /j/*, which this setup doesn't have. Out of scope here.
+    -->
+    <meta property="og:title" content="MakanMatch" />
+    <meta property="og:description" content="Swipe. Match. Makan. Decide where to eat, together." />
+    <meta property="og:image" content="%SITE_URL%/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="MakanMatch — swipe. match. makan." />
+    <meta property="og:url" content="%SITE_URL%/" />
+    <meta property="og:site_name" content="MakanMatch" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

@@ -28,8 +28,9 @@ The app needs a Supabase project (Phase 2+):
    ```
 
 4. Copy `.env.example` to `.env` and fill in the Project URL and anon key
-   (Dashboard → Settings → API). For deploys, add the same two variables in
-   Vercel → Settings → Environment Variables.
+   (Dashboard → Settings → API). For deploys, add the same variables in
+   Vercel → Settings → Environment Variables — including `VITE_SITE_URL`, the
+   deployed origin, which is baked into the Open Graph tags at build time.
 
 ## Google Places setup (Phase 3)
 
@@ -106,6 +107,50 @@ The policy, in one line: **closed is dropped, unknown is kept and flagged.**
 Hours are stamped once, at fetch time, and never re-checked; see
 `docs/COSTS.md` for why, and what the closing-time display does about it.
 
+## Sharing and joining (Phase 5a)
+
+No migration and no Edge Function changes — this phase is client-side plus one
+static image.
+
+Two ways in, for two situations:
+
+- **Same table → QR.** The lobby's room-code chit carries a QR of the join URL,
+  with a "Show larger" fullscreen view for scanning across a table. The room
+  code stays above it: QR fails in a dark bar, and six characters always work.
+- **Group chat → share sheet.** `navigator.share` where it exists, clipboard
+  plus a toast everywhere else. Both the lobby and the deck (for late arrivals)
+  carry the control, and the results screen shares the winning eatery with its
+  name, cuisine, distance and Maps link — the message that actually goes in the
+  chat once it is settled.
+
+Links point at `/j/CODE`, deliberately short because it gets read aloud and
+typed. That screen asks only for a name, remembers it in `localStorage`, and
+routes off the session's server-side status, so a link to a session that has
+already started lands the joiner straight on the deck.
+
+`navigator.share` needs HTTPS and must be called inside the user gesture, with
+nothing awaited first — see the note at the top of `src/lib/share.js`. Locally
+it is absent, so `npm run dev` always exercises the clipboard path.
+
+### Link previews
+
+`index.html` carries static Open Graph tags. `og:image` and `og:url` have to be
+absolute, so `VITE_SITE_URL` is substituted into them at build time by a small
+plugin in `vite.config.js`.
+
+The image itself is `public/og.png`, rasterised from `scripts/og.svg`:
+
+```sh
+npm run build:og   # asserts 1200x630 and that the brand fonts actually set
+```
+
+It is committed, so a normal build does not need to run it — only re-run it
+after editing `scripts/og.svg`.
+
+Per-session previews (the host's name, who is already in the queue) would need
+server-rendered HTML for `/j/*` routes. This is a static SPA where every route
+serves the same `index.html`, so that is out of scope.
+
 ## Multi-window smoke test
 
 1. Window A: Start a session → note the room code.
@@ -120,3 +165,15 @@ Hours are stamped once, at fetch time, and never re-checked; see
 7. Refresh a window mid-deck → it resumes on the correct next card.
 8. Drop one window's network for ~20s and restore it → it re-syncs, and if the
    reveal happened while it was offline it lands on results, not a dead deck.
+
+Sharing adds three more, best run on the deployed URL (local dev has no
+`navigator.share`):
+
+9. Lobby → Share → the native sheet opens on iOS/Android; cancelling it shows
+   nothing. On desktop Firefox the same button copies the link and toasts.
+10. Send the link through Telegram or WhatsApp → the preview card renders →
+    opening it lands on `/j/CODE` → joining shows up live in the host's lobby.
+    Join again on the same device and it offers "Join as {name}", one tap.
+11. Share a link for a session that is already swiping (joiner lands on the
+    deck) and one that has finished ("This session already finished", not an
+    empty deck).
