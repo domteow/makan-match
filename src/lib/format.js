@@ -72,7 +72,39 @@ function cuisineEmoji(cuisine) {
   return emoji || "🍽️";
 }
 
+// Serving/venue flags, in the order the detail sheet renders them. Only `true`
+// becomes a chip: Places returns false and null interchangeably for places it
+// simply has no data on, and "No takeaway" would be an assertion we cannot make.
+const ATTRIBUTE_LABELS = [
+  ["vegetarian", "Vegetarian options"],
+  ["dine_in", "Dine-in"],
+  ["takeout", "Takeaway"],
+  ["groups", "Good for groups"],
+  ["breakfast", "Breakfast"],
+  ["lunch", "Lunch"],
+  ["dinner", "Dinner"],
+];
+
+export function attributeLabels(attributes) {
+  if (!attributes) return [];
+  return ATTRIBUTE_LABELS.filter(([key]) => attributes[key] === true).map(
+    ([, label]) => label
+  );
+}
+
+// Card photo first, then whatever else Places gave us. photo_refs already
+// includes the primary (fetch-eateries stores photos[0..4]), so the carousel's
+// first frame is a browser cache hit from the card. Always w=640, the same
+// width the card asks for — a second width would double the Place Photos bill
+// for every photo (see docs/COSTS.md).
+function photoUrls(row) {
+  const refs = row.photo_refs?.length ? row.photo_refs : [row.photo_ref];
+  return refs.filter(Boolean).map((ref) => placePhotoUrl(ref, 640));
+}
+
 export function formatEatery(row) {
+  const photos = photoUrls(row);
+  const attributes = attributeLabels(row.attributes);
   return {
     id: row.id,
     name: row.name,
@@ -84,5 +116,32 @@ export function formatEatery(row) {
     emoji: cuisineEmoji(row.cuisine),
     img: placePhotoUrl(row.photo_ref, 640),
     ...formatHours(row),
+    // Phase 6. Every one of these can be null — most hawker stalls have none
+    // of them — and every consumer omits its section rather than rendering a
+    // placeholder. `|| null` normalises the empty strings Postgres can hand
+    // back so components only ever test truthiness.
+    summary: row.summary_overview || null,
+    summaryDisclosure: row.summary_disclosure || null,
+    description: row.summary_description || null,
+    reviewSummary: row.review_summary || null,
+    reviewSummaryUri: row.review_summary_uri || null,
+    reviewSummaryDisclosure: row.review_summary_disclosure || null,
+    priceRangeText: row.price_range_text || null,
+    websiteUri: row.website_uri || null,
+    mapsUri: row.maps_uri || null,
+    attributes,
+    photos,
+    // Whether the "More info" affordance is worth showing. The card front
+    // already carries the name, cuisine, address, rating and distance, so the
+    // sheet needs at least one thing the card does not have.
+    hasDetail: Boolean(
+      row.summary_description ||
+        row.review_summary ||
+        row.price_range_text ||
+        row.website_uri ||
+        row.maps_uri ||
+        attributes.length > 0 ||
+        photos.length > 1
+    ),
   };
 }
