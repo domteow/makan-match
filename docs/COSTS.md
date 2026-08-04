@@ -1,7 +1,8 @@
-# Google Places API costs
+# API costs
 
-Phase 3 calls two billable Google endpoints, both only from Supabase Edge
-Functions. Change anything here with the [Places API (New) pricing
+Two billable Google endpoints (Phase 3) and one billable Anthropic endpoint
+(Phase 6b), all called only from Supabase Edge Functions. Change anything here
+with the [Places API (New) pricing
 table](https://developers.google.com/maps/billing-and-pricing/pricing) open.
 
 ## Nearby Search (`fetch-eateries`)
@@ -64,6 +65,7 @@ places.servesDinner                      <- Enterprise + Atmosphere
 places.dineIn                            <- Enterprise + Atmosphere
 places.takeout                           <- Enterprise + Atmosphere
 places.goodForGroups                     <- Enterprise + Atmosphere
+places.reviews                           <- Enterprise + Atmosphere
 ```
 
 A request is billed at the SKU of its most expensive field. Phase 6 moved
@@ -145,6 +147,24 @@ not hardcoded**, so Google changing the wording flows through without a
 deploy. A review summary must additionally link out to
 `reviewSummary.reviewsUri`. Do not render either summary without them.
 
+Since Phase 6b most summaries are ours, not Google's, and the two must not be
+credited the same way. The rule is one line: **a Google disclosure string is
+present if and only if the summary is Google's.** The card shows that string
+when it is there and nothing when it is not; the detail sheet shows it when it
+is there and "Based on Google reviews" — which is what ours are derived from —
+when it is not. Never both, and never Google's wording over our text.
+
+### Phase 6b: `places.reviews`
+
+Reviews joined the mask so we can write our own summaries (see the Anthropic
+section below). It is another Enterprise + Atmosphere field, and the call was
+already at that SKU, so the Nearby Search bill is **unchanged** — this is the
+"adding more Atmosphere fields costs nothing" case from the list above.
+
+Review text is used and discarded: `fetch-eateries` sends up to four reviews
+per place to Anthropic and stores only the summary that comes back. Nothing in
+the database holds review prose.
+
 There is no price or open-now request parameter on Nearby Search — Text Search
 has `openNow`, Nearby Search does not — which is why `price_max` is filtered
 client-side and `open_now` is post-filtered in the function.
@@ -168,8 +188,8 @@ Read-through cache in the public `place-photos` Storage bucket, keyed by
 per photo (not per session), so:
 
 - a cache hit costs nothing — 302 to the Storage public URL, no Google call;
-- each distinct (photo, width) pair is fetched from Google **at most once
-  across all sessions and users**, then served from Storage forever.
+- each distinct (photo, width) pair is fetched from Google **at most once per
+  30-day window across all sessions and users**.
 
 The client always requests `w=640`, so in practice it is one Place Photos
 call per distinct eatery photo, ever. Adding new width variants to the client
@@ -192,10 +212,58 @@ Most cards are never expanded. Loading five photos per card up front would
 multiply the Place Photos bill by ~5 for photos nobody looks at. **Do not
 preload the carousel.**
 
+### The cache expires after 30 days, and that is not negotiable
+
+Google Maps Platform terms allow storing `place_id` indefinitely and most
+other Places content not at all. The original "served from Storage forever"
+design was wrong on that point. A cached object older than 30 days is now
+treated as a miss: refetched from Google, overwritten, timestamp reset. The
+`Cache-Control` on the redirect matches the same window — an `immutable` year
+would have left browsers and the CDN holding bytes after the server-side copy
+had aged out.
+
+The bill barely notices. A place's photos change slowly, so the worst case is
+one Place Photos call per distinct photo per month instead of one ever, and
+every repeat view inside the window still costs nothing.
+
+## Anthropic (`fetch-eateries`, Phase 6b)
+
+Google returns no `generativeSummary` or `reviewSummary` for Singapore places,
+so the line that says what the food actually is comes from Claude
+(`claude-haiku-4-5`), written from the reviews Nearby Search already returned.
+
+**One batched call per session, maximum.** Every uncached place in the deck
+goes into a single request — twenty separate calls would be the difference
+between a fraction of a cent and a real bill, and between 3 seconds and 40.
+The inputs are small (≤20 places × ≤4 reviews × ≤400 chars) and the output is
+a couple of lines per place, so a full 20-place session is a fraction of a cent
+at Haiku rates.
+
+Most sessions cost less than that, because `place_summaries` is keyed by
+Google `place_id` and shared across every session and user: the second group
+to swipe in the same neighbourhood pays only for places the first group did not
+see. Cache rows carry the same 30-day TTL as the photos, for the same
+compliance reason, so a heavily-reused place is re-summarised about monthly.
+
+Three guarantees the implementation keeps, all in
+`supabase/functions/fetch-eateries/summaries.ts`:
+
+- **Session start never fails on summarisation.** Missing key, HTTP error,
+  8-second timeout, truncated or unparseable JSON — every path logs and deals
+  the deck with blank summary lines.
+- **Places with fewer than 2 reviews are skipped**, not summarised thinly.
+- **Only the summary is stored**, never the review text it came from.
+
+Set a spend limit on the Anthropic key (console.anthropic.com → Limits).
+Expected usage is cents per month, so a low cap costs nothing and bounds the
+damage if something ever loops.
+
 ## Per-session worst case
 
 For a brand-new session in a never-seen area: 1 Nearby Search (Enterprise +
-Atmosphere) + up to 20 Place Photos calls (one per new eatery photo), plus up
-to 4 more per eatery whose detail sheet is opened. Every repeat session in that
-area: 1 Nearby Search, ~0 photo calls — the photo cache is keyed by photo
-resource name, which is stable across sessions.
+Atmosphere) + 1 batched Anthropic call + up to 20 Place Photos calls (one per
+new eatery photo), plus up to 4 more per eatery whose detail sheet is opened.
+Every repeat session in that area: 1 Nearby Search, and — until the 30-day TTLs
+lapse — no photo calls and an Anthropic call only if the deck turned up places
+nobody has swiped on yet. Both caches are keyed by Google identifiers that are
+stable across sessions.

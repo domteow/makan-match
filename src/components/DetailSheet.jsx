@@ -6,9 +6,11 @@ import Chip from "./Chip.jsx";
 // buttons — the whole point is that you can read the description and decide
 // without closing the sheet first (SwipeDeck floats them above this).
 //
-// Not a menu. Places has no menu field. "About" is the generative description
-// (which usually names dishes), "What people say" is the review summary. The
-// word "menu" appears nowhere in this file on purpose.
+// Not a menu. Places has no menu field. "About" is the description — Google's
+// generative one where it exists, otherwise the one Claude wrote for us from
+// the place's Google reviews (Phase 6b), which in Singapore is nearly always
+// the case. "What people say" is Google's review summary. The word "menu"
+// appears nowhere in this file on purpose.
 
 const CLOSE_DRAG_PX = 90; // drag further than this and it closes
 const DIRECTION_LOCK_PX = 10; // deadzone before we commit to a gesture
@@ -107,6 +109,7 @@ export default function DetailSheet({ eatery, onClose }) {
     photos,
     description,
     summaryDisclosure,
+    summaryFromReviews,
     reviewSummary,
     reviewSummaryUri,
     reviewSummaryDisclosure,
@@ -158,8 +161,16 @@ export default function DetailSheet({ eatery, onClose }) {
             <section className="detail-section">
               <h3 className="detail-heading">About</h3>
               <p className="detail-text">{description}</p>
-              {summaryDisclosure && (
+              {/* Google's own disclosure when the summary is Google's; our own
+                  credit when it isn't. Ours is written from Google review text,
+                  so the reviews still get attribution — it just must not claim
+                  Google generated the words. Never both. */}
+              {summaryDisclosure ? (
                 <p className="detail-disclosure">{summaryDisclosure}</p>
+              ) : (
+                summaryFromReviews && (
+                  <p className="detail-disclosure">Based on Google reviews</p>
+                )
               )}
             </section>
           )}

@@ -121,7 +121,17 @@ export function formatEatery(row) {
     // placeholder. `|| null` normalises the empty strings Postgres can hand
     // back so components only ever test truthiness.
     summary: row.summary_overview || null,
+    // Only ever set when the summary came from Google (Phase 6) — a generative
+    // summary always ships with its disclosure string, and ours (Phase 6b,
+    // written from review text by Claude) never does, because Google did not
+    // write it. So the presence of this string is exactly the signal for which
+    // credit line to render: Google's own wording, or "Based on Google reviews"
+    // for ours.
     summaryDisclosure: row.summary_disclosure || null,
+    summaryFromReviews: Boolean(
+      (row.summary_overview || row.summary_description) &&
+        !row.summary_disclosure
+    ),
     description: row.summary_description || null,
     reviewSummary: row.review_summary || null,
     reviewSummaryUri: row.review_summary_uri || null,
