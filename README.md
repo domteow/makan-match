@@ -151,6 +151,40 @@ Per-session previews (the host's name, who is already in the queue) would need
 server-rendered HTML for `/j/*` routes. This is a static SPA where every route
 serves the same `index.html`, so that is out of scope.
 
+## Deck options and shuffle (Phase 5b)
+
+The session-create screen keeps two decisions in front of the host — where, and
+whether to hide closed places — and folds the rest behind **More options**:
+search radius (500m / 1km / 2km / 5km, chips rather than a slider, labelled with
+walking times), deck size (10 / 15 / 20) and budget. Radius and deck size are
+remembered in `localStorage` and prefilled next session.
+
+Two rules hold the feature together:
+
+- **Shuffle per session, never per participant.** `eateries.position` is
+  assigned once, by `fetch-eateries` at deal time or by `reshuffle_deck`, and
+  every client reads that same column. The vote maths is per-eatery so order
+  does not change the counting — but participation is routinely partial (the
+  host can reveal at any time, people join late), and an identical order means
+  everyone's partial progress covers the same cards, so the votes overlap. Five
+  per-person orders would leave every eatery with one or two votes.
+- **Always fetch the Places maximum, whatever the deck size.** Nearby Search
+  bills per call, not per result, so asking for 10 costs exactly what asking for
+  20 costs. `fetch-eateries` stores every survivor and `get_session_state`
+  serves only `position <= sessions.eatery_count`. The rest is free reserve.
+
+That reserve is what makes the lobby's **Shuffle** free: `reshuffle_deck`
+reassigns positions across all stored rows, so a different subset surfaces,
+without a second Places call. It is host-only and lobby-only — after Start,
+re-drawing would strand swipes on cards that had left the deck, and the RPC
+raises `NOT_IN_LOBBY` regardless of what the UI shows. It also stamps
+`sessions.deck_shuffled_at`, which is what pushes every other client to
+re-read the deck instead of previewing a stale order.
+
+The label is deliberately "Shuffle", not "Find more": it re-draws from places
+already found nearby, it does not search further afield. Widening the search is
+the separate, and separately billed, "widen and redeal".
+
 ## Multi-window smoke test
 
 1. Window A: Start a session → note the room code.
@@ -177,3 +211,19 @@ Sharing adds three more, best run on the deployed URL (local dev has no
 11. Share a link for a session that is already swiping (joiner lands on the
     deck) and one that has finished ("This session already finished", not an
     empty deck).
+
+Deck options and shuffle:
+
+12. Create a session with defaults → 15 cards, all within 1km. Set radius 5km
+    and deck size 20 → 20 cards with a visibly wider spread of distances. Set
+    deck size 10 → exactly 10.
+13. Create two sessions back to back from the same spot with the same settings
+    → different order, and a different set of places.
+14. Lobby → Shuffle → the deck preview changes, and **Google Cloud metrics show
+    no additional Nearby Search request**. That last part is the assertion.
+15. Two windows in the same session → identical card order, before and after a
+    shuffle.
+16. Start swiping → the Shuffle control is gone, and calling `reshuffle_deck`
+    directly raises `NOT_IN_LOBBY`.
+17. Somewhere quiet, 300m with Open now on → the thin-deck prompt still fires,
+    now against `eatery_count` rather than a fixed 20.

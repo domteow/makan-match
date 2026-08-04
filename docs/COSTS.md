@@ -18,6 +18,20 @@ survive the filters the function still writes the deck, it just holds the
 session in the lobby; the host's "swipe these anyway" re-invocation lands on
 the idempotent path and calls nothing.
 
+### Deck size does not change the bill
+
+`maxResultCount` is pinned at 20 no matter what deck size the host picked.
+Nearby Search bills **per call, not per result** — requesting 10 costs exactly
+what requesting 20 costs — so lowering it would save nothing and throw away the
+rows past `deck_size` that we store as reserve. Do not "optimise" this by
+passing `session.deck_size` through to the request.
+
+That reserve is what makes the lobby's Shuffle free: `reshuffle_deck` only
+reassigns `eateries.position` over rows already in the database, so a different
+subset surfaces in the deck for the cost of one `UPDATE`. Any change that makes
+shuffling reach for new places turns a free action into a per-tap Enterprise-SKU
+call, which is the one thing this feature exists to avoid.
+
 ### Field mask and SKU
 
 ```

@@ -669,6 +669,121 @@ body {
   box-shadow: none;
 }
 
+/* Two-line chip: the number, and the context that makes it mean something
+   ("1km" / "12 min walk"). Same 44px touch target as a plain chip. */
+.chip-stacked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 7px 12px;
+  line-height: 1.15;
+}
+
+.chip-main {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.chip-sub {
+  font-size: 10.5px;
+  font-weight: 700;
+  opacity: 0.7;
+}
+
+/* "More options" — everything with a defensible default lives behind this. */
+.disclosure {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 10px 0;
+  min-height: 44px;
+  color: var(--cream);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+/* The underline lives here, not on the button: a decoration set on the parent
+   is drawn across every child, caret and summary included. */
+.disclosure-label {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.disclosure-caret {
+  display: inline-block;
+  font-size: 11px;
+  transition: transform 0.15s ease;
+}
+
+.disclosure-caret.open {
+  transform: rotate(90deg);
+}
+
+/* Current values, shown only while folded — a remembered 5km must not hide. */
+.disclosure-summary {
+  color: var(--mist);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.disclosure-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Lobby deck summary + the free re-draw next to it. */
+.deck-summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+  color: var(--mist);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.deck-shuffle {
+  background: none;
+  border: 2px solid var(--mist);
+  border-radius: 999px;
+  padding: 8px 14px;
+  min-height: 44px;
+  color: var(--cream);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.deck-shuffle:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.deck-shuffle:active:not(:disabled) {
+  background: rgba(253, 246, 227, 0.12);
+}
+
+.deck-preview {
+  margin-top: 8px;
+  max-width: 320px;
+  color: var(--mist);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  opacity: 0.85;
+}
+
 .field-hint {
   color: var(--mist);
   font-size: 12.5px;

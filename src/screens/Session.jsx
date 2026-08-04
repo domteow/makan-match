@@ -90,11 +90,14 @@ export default function Session({ userId }) {
   if (session.status === "lobby") {
     return (
       <Lobby
+        session={session}
         sessionId={session.id}
         code={session.code}
         participants={participants}
+        eateries={eateries}
         userId={userId}
         isHost={isHost}
+        onRefresh={refresh}
       />
     );
   }

@@ -10,6 +10,7 @@ const ERROR_COPY = {
   NOT_HOST: "Only the host can do that.",
   ALREADY_STARTED: "Session already started.",
   NOT_SWIPING: "Nothing to reveal — this session isn't swiping.",
+  NOT_IN_LOBBY: "Too late to shuffle — the deck's already out.",
   SESSION_NOT_SWIPING: "Swiping's closed for this session.",
   SESSION_NOT_DONE: "Results aren't in yet.",
   NO_LOCATION: "Pick where you're eating before starting.",

@@ -7,6 +7,15 @@ export function formatDistance(m) {
   return m < 1000 ? `${m}m` : `${(m / 1000).toFixed(1)}km`;
 }
 
+// Search radius, not a measured distance: these are round numbers the host
+// picked, so "1km" reads better than formatDistance's "1.0km".
+export function formatRadius(m) {
+  if (m == null) return "";
+  if (m < 1000) return `${m}m`;
+  const km = m / 1000;
+  return `${Number.isInteger(km) ? km : km.toFixed(1)}km`;
+}
+
 // A place closing this soon still goes in the deck — the group needs time to
 // walk there and eat, and only they know whether that fits. We flag it.
 const CLOSING_SOON_MS = 45 * 60 * 1000;

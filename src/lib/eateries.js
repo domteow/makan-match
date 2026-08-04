@@ -1,17 +1,33 @@
 import { supabase } from "./supabase.js";
 import { friendlyError, friendlyCode } from "./errors.js";
 
-// Host sets lat/lng + filters on the session before Start is possible.
+// Host sets lat/lng + deck options on the session before Start is possible.
 export async function setSessionLocation(
   sessionId,
-  { lat, lng, radiusM = 1500, filters = {} }
+  { lat, lng, radiusM = 1000, deckSize = 15, filters = {} }
 ) {
   const { error } = await supabase.rpc("set_session_location", {
     p_session_id: sessionId,
     p_lat: lat,
     p_lng: lng,
     p_radius_m: radiusM,
+    p_deck_size: deckSize,
     p_filters: filters,
+  });
+  if (error) throw friendlyError(error);
+}
+
+// Re-draws the deck from the places already fetched for this session — the
+// rows past deck_size that fetch-eateries stored as reserve. Costs no Places
+// call, which is the whole point: it is a free second opinion, not a new
+// search. Lobby only, host only; the RPC raises NOT_IN_LOBBY otherwise.
+//
+// Positions are rewritten on the session's rows, so every participant gets the
+// same new order — the caller re-runs get_session_state, and everyone else is
+// nudged by the sessions UPDATE that reshuffle_deck stamps.
+export async function reshuffleDeck(sessionId) {
+  const { error } = await supabase.rpc("reshuffle_deck", {
+    p_session_id: sessionId,
   });
   if (error) throw friendlyError(error);
 }
