@@ -3,23 +3,40 @@ import Chip from "./Chip.jsx";
 
 const SWIPE_THRESHOLD = 110;
 const EXIT_MS = 260;
+// A press that moves less than this and ends quickly is a tap, not an aborted
+// drag — that is what opens the detail sheet. Generous enough for a thumb that
+// never holds quite still.
+const TAP_SLOP_PX = 8;
+const TAP_MAX_MS = 500;
 
-export default function SwipeCard({ eatery, onSwipe, isTop, stackIndex, forcedDir }) {
+export default function SwipeCard({
+  eatery,
+  onSwipe,
+  onExpand,
+  isTop,
+  stackIndex,
+  forcedDir,
+}) {
   const [drag, setDrag] = useState({ x: 0, y: 0, active: false });
   const [imgFailed, setImgFailed] = useState(false);
   const [leaving, setLeaving] = useState(null);
-  const start = useRef({ x: 0, y: 0 });
+  const start = useRef({ x: 0, y: 0, at: 0, moved: false });
 
   const handlePointerDown = (e) => {
     if (!isTop || leaving) return;
     e.currentTarget.setPointerCapture(e.pointerId);
-    start.current = { x: e.clientX, y: e.clientY };
+    start.current = { x: e.clientX, y: e.clientY, at: Date.now(), moved: false };
     setDrag((d) => ({ ...d, active: true }));
   };
 
   const handlePointerMove = (e) => {
     if (!drag.active || leaving) return;
-    setDrag({ x: e.clientX - start.current.x, y: e.clientY - start.current.y, active: true });
+    const x = e.clientX - start.current.x;
+    const y = e.clientY - start.current.y;
+    if (Math.abs(x) > TAP_SLOP_PX || Math.abs(y) > TAP_SLOP_PX) {
+      start.current.moved = true;
+    }
+    setDrag({ x, y, active: true });
   };
 
   const release = () => {
@@ -28,9 +45,12 @@ export default function SwipeCard({ eatery, onSwipe, isTop, stackIndex, forcedDi
       const dir = drag.x > 0 ? "right" : "left";
       setLeaving(dir);
       setTimeout(() => onSwipe(eatery.id, dir === "right"), EXIT_MS);
-    } else {
-      setDrag({ x: 0, y: 0, active: false });
+      return;
     }
+    const tapped =
+      !start.current.moved && Date.now() - start.current.at < TAP_MAX_MS;
+    setDrag({ x: 0, y: 0, active: false });
+    if (tapped && eatery.hasDetail) onExpand?.();
   };
 
   // Programmatic swipe via the ✕ / ♥ buttons
@@ -101,6 +121,20 @@ export default function SwipeCard({ eatery, onSwipe, isTop, stackIndex, forcedDi
           <div className="swipe-card-sub">
             {eatery.cuisine} · {eatery.tag}
           </div>
+          {/* The one thing Phase 6 adds to the card face: ~100 characters that
+              say what the food is. Absent for most hawker stalls, and absent
+              means absent — no placeholder, no falling back to the longer
+              description, nothing occupying the space. */}
+          {eatery.summary && (
+            <>
+              <p className="swipe-card-summary">{eatery.summary}</p>
+              {/* Google requires attribution wherever a generated summary is
+                  shown. The string comes from the API, not from us. */}
+              {eatery.summaryDisclosure && (
+                <p className="swipe-card-disclosure">{eatery.summaryDisclosure}</p>
+              )}
+            </>
+          )}
           <div className="swipe-card-chips">
             {eatery.rating != null && <Chip>★ {eatery.rating}</Chip>}
             {eatery.dist && <Chip>{eatery.dist} away</Chip>}
@@ -108,6 +142,19 @@ export default function SwipeCard({ eatery, onSwipe, isTop, stackIndex, forcedDi
                 two cases the group needs to weigh get a chip. */}
             {eatery.hoursUnknown && <Chip tone="muted">hours unknown</Chip>}
             {eatery.closingSoon && <Chip tone="warn">{eatery.closesLabel}</Chip>}
+            {isTop && eatery.hasDetail && (
+              // A hint, not the only way in — the whole card body is tappable.
+              // stopPropagation keeps the press from starting a drag.
+              <button
+                type="button"
+                className="swipe-card-more"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={onExpand}
+                aria-label={`More info about ${eatery.name}`}
+              >
+                ⓘ More info
+              </button>
+            )}
           </div>
         </div>
       </div>

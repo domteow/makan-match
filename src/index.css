@@ -1253,11 +1253,263 @@ body {
   min-height: 44px;
 }
 
+/* ---------- Phase 6: what you're swiping on ---------- */
+
+/* Name and address are clamped so the card face can never grow past its fixed
+   height and clip the "More info" button off the bottom. */
+.swipe-card-name,
+.swipe-card-sub {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+/* Google's ~100-character overview. Two lines, hard stop — the swipe loop
+   stays fast, and anything longer lives in the detail sheet. */
+.swipe-card-summary {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 600;
+  color: var(--ink);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+/* "Summarized with Gemini" and friends. Required attribution, so it is quiet
+   but never hidden. */
+.swipe-card-disclosure {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--taupe);
+}
+
+.swipe-card-more {
+  margin-left: auto;
+  align-self: center;
+  background: none;
+  border: none;
+  padding: 0 2px;
+  min-height: 44px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--taupe);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* Chips wrap to a second row rather than squeezing each other into two-line
+   pills. The row now also carries the "More info" button, so it runs out of
+   width sooner than it used to. */
+.swipe-card-chips {
+  flex-wrap: wrap;
+  row-gap: 8px;
+  align-items: center;
+}
+
+.swipe-card-chips .chip {
+  white-space: nowrap;
+}
+
+/* The ✕ / ♥ pair while the detail sheet is open: the same two buttons, lifted
+   out of the flow into a solid footer pinned to the bottom of the sheet, so a
+   decision never needs the sheet closed first. Solid rather than floating —
+   content scrolling past has to be cut off cleanly, not read through the gap
+   between two buttons. */
+.swipe-actions-floating {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0 auto;
+  max-width: 430px;
+  justify-content: center;
+  padding: 12px 0 calc(12px + env(safe-area-inset-bottom));
+  background: var(--cream);
+  /* Side borders continue the sheet's outline, which matters on desktop where
+     the 430px column has visible edges. */
+  border: 2px solid var(--ink);
+  border-bottom: none;
+  z-index: 40;
+}
+
+.detail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(14, 59, 54, 0.72);
+  animation: sheet-fade 160ms ease both;
+}
+
+.detail-sheet {
+  width: 100%;
+  max-width: 430px;
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--cream);
+  border: 2px solid var(--ink);
+  border-bottom: none;
+  border-radius: 22px 22px 0 0;
+  animation: sheet-up 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Drag handle. touch-action:none so the dismiss gesture is reliable here even
+   where the browser would otherwise claim the drag as a scroll. */
+.detail-grabber {
+  flex-shrink: 0;
+  width: 44px;
+  height: 5px;
+  margin: 10px auto 8px;
+  border-radius: 999px;
+  background: var(--cream-shade-2);
+  touch-action: none;
+}
+
+.detail-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  /* Reserves the ✕ / ♥ footer, so the last section can always be scrolled
+     clear of it. */
+  padding: 0 18px calc(92px + env(safe-area-inset-bottom));
+}
+
+.detail-head {
+  padding-bottom: 12px;
+}
+
+.detail-name {
+  font-family: var(--font-display);
+  font-size: 21px;
+  line-height: 1.15;
+  color: var(--ink);
+}
+
+.detail-sub {
+  margin-top: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--taupe);
+}
+
+/* Photos 2-5, fetched only because this sheet is open. */
+.detail-carousel {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  touch-action: pan-x;
+  scrollbar-width: none;
+  /* Bleeds to the sheet edges so photos run off the side when scrolled, but
+     snaps to the same 18px gutter as the text. Without scroll-padding the
+     snap eats padding-left and the first photo starts flush at the border. */
+  margin: 0 -18px;
+  padding: 0 18px 2px;
+  scroll-padding-left: 18px;
+}
+
+.detail-carousel::-webkit-scrollbar {
+  display: none;
+}
+
+.detail-photo {
+  flex: 0 0 auto;
+  width: 236px;
+  height: 152px;
+  object-fit: cover;
+  border: 2px solid var(--ink);
+  border-radius: 14px;
+  background: var(--cream-shade);
+  scroll-snap-align: start;
+}
+
+.detail-section {
+  margin-top: 18px;
+}
+
+.detail-heading {
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--taupe);
+  margin-bottom: 6px;
+}
+
+.detail-text {
+  font-size: 14.5px;
+  line-height: 1.5;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.detail-disclosure {
+  margin-top: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--taupe);
+}
+
+/* Mandatory alongside a review summary — Google requires the link out to the
+   reviews it was summarised from. */
+.detail-review-link {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--pandan);
+}
+
+.detail-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* The real dollar range. Worth more than "$$", which is why it gets its own
+   line rather than replacing the symbols on the card face. */
+.detail-price {
+  font-family: var(--font-display);
+  font-size: 19px;
+  color: var(--ink);
+}
+
+.detail-links {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.detail-link {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 10px;
+  font-size: 14px;
+  text-align: center;
+  text-decoration: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .reveal-in,
   .hero-wrap,
   .sheet,
-  .sheet-backdrop {
+  .sheet-backdrop,
+  .detail-sheet,
+  .detail-backdrop {
     animation: none;
     opacity: 1;
     transform: none;

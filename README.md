@@ -185,6 +185,54 @@ The label is deliberately "Shuffle", not "Find more": it re-draws from places
 already found nearby, it does not search further afield. Widening the search is
 the separate, and separately billed, "widen and redeal".
 
+## Know what you're swiping on (Phase 6)
+
+Migration `0007_details.sql` adds the detail columns to `eateries` and extends
+`get_session_state` and `get_results` to return them. The Places field mask
+changed, so this phase needs a redeploy too:
+
+```sh
+npx supabase db push
+npx supabase functions deploy fetch-eateries   # place-photo is unchanged
+```
+
+**This phase costs money on purpose.** The generative summaries, the review
+summary and the serving attributes are Enterprise + Atmosphere fields, one SKU
+above where the deck used to sit: $35 → $40 per 1,000 Nearby Searches, i.e.
++$0.005 per session, still one call per session. Read `docs/COSTS.md` before
+touching the mask, and set the `SearchNearbyRequest per day` quota cap in
+Google Cloud — that step is manual and cannot be done from the repo.
+
+Three rules shape the feature:
+
+- **It is not a menu, and it never says "menu".** The Places API has no menu
+  field at all (`menuForChildren` is a boolean). What it has is a generative
+  description that usually names dishes, a review summary that names what
+  people order, several photos and a website link. The UI calls them "About",
+  "What people say" and "See website", because that is what they are.
+- **Absent means absent.** Coverage is poor for exactly the places Singaporeans
+  eat at — hawker stalls, coffeeshop units, small tenants. Every field is
+  optional and every section is omitted entirely when its data is missing. No
+  placeholders, no "no information available", no empty boxes. The card face
+  gets one addition and one only: a two-line `summary_overview` under the
+  cuisine row, which simply is not there when Google has no summary.
+- **Photos 2-5 load on expand, never on deck load.** `photo_refs` is stored for
+  free out of the Nearby Search response, but fetching a photo is billable.
+  The deck fires one `place-photo` request per card; the rest only when a
+  detail sheet is actually opened. Most cards never are.
+
+Tapping a card (or its "ⓘ More info" affordance) slides a detail sheet up over
+the deck. The ✕ / ♥ buttons lift into a footer above the sheet and stay live,
+so you can read the description and decide in one gesture. Swipe the sheet
+down, tap outside it, or press Escape to go back to the deck; swiping the card
+either way closes it too.
+
+**Attribution is mandatory, not decorative.** Wherever a generated summary
+appears, so does the `disclosureText` Google returned with it; a review summary
+additionally links out to the place's reviews on Google Maps. Both disclosure
+strings are stored per eatery rather than hardcoded, so Google rewording them
+flows through without a deploy.
+
 ## Multi-window smoke test
 
 1. Window A: Start a session → note the room code.

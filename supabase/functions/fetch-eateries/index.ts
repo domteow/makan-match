@@ -35,9 +35,36 @@ const FIELD_MASK = [
   "places.currentOpeningHours.openNow",
   "places.currentOpeningHours.nextCloseTime",
   "places.regularOpeningHours.openNow",
+  // ---- Phase 6: what the food actually is ----
+  // EVERYTHING FROM HERE DOWN IS A SKU CHANGE. The generative summaries, the
+  // review summary and every serves*/dineIn/takeout/goodForGroups attribute are
+  // Enterprise + ATMOSPHERE fields, one tier above the Enterprise SKU the rest
+  // of this mask sits in. A request bills at the SKU of its most expensive
+  // field, so this whole block moves together:
+  //   - adding MORE atmosphere fields from here costs nothing extra;
+  //   - removing SOME of them saves nothing;
+  //   - removing ALL of them drops the call back to Enterprise.
+  // priceRange and websiteUri are NOT atmosphere fields — they are Enterprise,
+  // and would be free even without the block below. See docs/COSTS.md.
+  "places.generativeSummary.overview",
+  "places.generativeSummary.description",
+  "places.generativeSummary.disclosureText",
+  "places.reviewSummary.text",
+  "places.reviewSummary.reviewsUri",
+  "places.reviewSummary.disclosureText",
+  "places.priceRange",
+  "places.websiteUri",
+  "places.servesVegetarianFood",
+  "places.servesBreakfast",
+  "places.servesLunch",
+  "places.servesDinner",
+  "places.dineIn",
+  "places.takeout",
+  "places.goodForGroups",
 ].join(",");
 // NOTE: rating/userRatingCount/priceLevel/photos put this call in the
-// Enterprise SKU. Do not add fields without checking the pricing table.
+// Enterprise SKU; the Phase 6 block above lifts it to Enterprise + Atmosphere.
+// Do not add fields without checking the pricing table.
 // (types and the opening-hours fields are Pro-tier, so they cost nothing on
 // top of Enterprise. See docs/COSTS.md.)
 
@@ -97,6 +124,49 @@ const PRICE_LEVEL_MAP: Record<string, number> = {
 };
 const toPriceLevel = (v?: string) =>
   v && PRICE_LEVEL_MAP[v] ? PRICE_LEVEL_MAP[v] : null;
+
+// Places wraps most prose in LocalizedText ({ text, languageCode }). Summaries
+// nest it twice: reviewSummary.text is a LocalizedText, so the string is at
+// reviewSummary.text.text.
+const localized = (v?: any): string | null => v?.text?.trim() || null;
+
+// Symbols for the currencies this app plausibly sees. Anything else falls back
+// to the ISO code, which is ugly but never wrong.
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  SGD: "S$",
+  MYR: "RM",
+  USD: "US$",
+  AUD: "A$",
+  EUR: "€",
+  GBP: "£",
+  JPY: "¥",
+  THB: "฿",
+  IDR: "Rp",
+};
+const currencySymbol = (code?: string) =>
+  code ? CURRENCY_SYMBOLS[code] ?? `${code} ` : "";
+
+// Money.units is an int64 and therefore arrives as a STRING. Nanos are ignored:
+// these are rough per-person ranges, and "S$10–20" is the whole point of
+// preferring this over "$$".
+const moneyUnits = (m?: any): number | null => {
+  const n = m?.units == null ? NaN : Number(m.units);
+  return Number.isFinite(n) ? n : null;
+};
+
+// { startPrice, endPrice } -> "S$10–20". Either end can be missing.
+function formatPriceRange(range?: any): string | null {
+  if (!range) return null;
+  const lo = moneyUnits(range.startPrice);
+  const hi = moneyUnits(range.endPrice);
+  const symbol = currencySymbol(
+    range.startPrice?.currencyCode ?? range.endPrice?.currencyCode
+  );
+  if (lo != null && hi != null) return `${symbol}${lo}–${hi}`; // en dash
+  if (lo != null) return `${symbol}${lo}+`;
+  if (hi != null) return `under ${symbol}${hi}`;
+  return null;
+}
 
 // currentOpeningHours accounts for holidays and special days; regularOpeningHours
 // is the fallback when Google has no current-hours record. null means Google has
@@ -276,6 +346,36 @@ Deno.serve(async (req) => {
       lat: p.location.latitude,
       lng: p.location.longitude,
       maps_uri: p.googleMapsUri ?? null,
+      // Phase 6 detail. Coverage is patchy by design of the data, not of the
+      // code: chains and sit-down restaurants usually have summaries, hawker
+      // stalls and coffeeshop units usually have none. Every one of these is
+      // allowed to be null and the UI omits the section entirely when it is.
+      summary_overview: localized(p.generativeSummary?.overview),
+      summary_description: localized(p.generativeSummary?.description),
+      // Attribution strings are stored, not hardcoded, so Google changing
+      // "Summarized with Gemini" flows through without a deploy.
+      summary_disclosure: localized(p.generativeSummary?.disclosureText),
+      review_summary: localized(p.reviewSummary?.text),
+      review_summary_uri: p.reviewSummary?.reviewsUri ?? null,
+      review_summary_disclosure: localized(p.reviewSummary?.disclosureText),
+      price_range_text: formatPriceRange(p.priceRange),
+      website_uri: p.websiteUri ?? null,
+      attributes: {
+        vegetarian: p.servesVegetarianFood ?? null,
+        breakfast: p.servesBreakfast ?? null,
+        lunch: p.servesLunch ?? null,
+        dinner: p.servesDinner ?? null,
+        dine_in: p.dineIn ?? null,
+        takeout: p.takeout ?? null,
+        groups: p.goodForGroups ?? null,
+      },
+      // Includes photo_ref above at index 0, so the carousel's first frame is
+      // already in the browser cache from the card. Capped at 5: the detail
+      // sheet only ever fetches 2-5, and only when it is actually opened.
+      photo_refs: (p.photos ?? [])
+        .slice(0, 5)
+        .map((ph: any) => ph.name)
+        .filter(Boolean),
       // Shuffled order, assigned once for the session. Positions above
       // eatery_count are reserve: stored, never served, free to shuffle in.
       position: i + 1,
