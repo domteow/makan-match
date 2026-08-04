@@ -2,15 +2,31 @@ import { useMemo, useState } from "react";
 import Logo from "../components/Logo.jsx";
 import QrChit from "../components/QrChit.jsx";
 import ShareButton from "../components/ShareButton.jsx";
-import { startSwiping, resetSessionForRedeal } from "../lib/eateries.js";
+import {
+  startSwiping,
+  resetSessionForRedeal,
+  reshuffleDeck,
+  passesPriceFilter,
+} from "../lib/eateries.js";
 import { joinUrl, sessionSharePayload } from "../lib/share.js";
+import { formatRadius } from "../lib/format.js";
 
 const AVATAR_COLORS = ["#E8542F", "#2E8B57", "#D4A017", "#7B5EA7", "#C8331F", "#1F7A4D"];
 
-export default function Lobby({ sessionId, code, participants, userId, isHost }) {
+export default function Lobby({
+  session,
+  sessionId,
+  code,
+  participants,
+  eateries = [],
+  userId,
+  isHost,
+  onRefresh,
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [thin, setThin] = useState(null); // fetch-eateries' thin-deck response
+  const [shuffling, setShuffling] = useState(false);
 
   // Built up front, not on tap: the share handler must reach navigator.share
   // without awaiting anything (see lib/share.js).
@@ -40,6 +56,40 @@ export default function Lobby({ sessionId, code, participants, userId, isHost })
     } catch (e) {
       setError(e);
       setBusy(false);
+    }
+  };
+
+  // The deck only exists once fetch-eateries has run — which normally starts
+  // the session in the same breath, so the lobby sees a real deck only when a
+  // thin one is being held here for the host to decide on. Before that we
+  // describe the deck the host has asked for, not one that exists.
+  //
+  // price_max is applied client-side (Nearby Search has no price parameter),
+  // so the preview filters the same way the deck will, and the count here is
+  // the count people will actually swipe.
+  const dealt = eateries.length > 0;
+  const deck = useMemo(
+    () => eateries.filter((e) => passesPriceFilter(e, session?.filters)),
+    [eateries, session?.filters]
+  );
+  const deckCount = dealt ? deck.length : (session?.deck_size ?? 15);
+  const deckSummary = `${deckCount} place${deckCount === 1 ? "" : "s"} within ${formatRadius(session?.radius_m)}`;
+
+  // Honest label: this re-draws from the places we already found nearby (the
+  // reserve fetch-eateries stored beyond deck_size). It does not search further
+  // afield, and it costs no Places call.
+  const shuffle = async () => {
+    setShuffling(true);
+    setError(null);
+    try {
+      await reshuffleDeck(sessionId);
+      // The host's own refresh. Everyone else re-fetches off the sessions
+      // UPDATE that reshuffle_deck stamps, so no one previews a stale order.
+      await onRefresh?.();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setShuffling(false);
     }
   };
 
@@ -88,6 +138,29 @@ export default function Lobby({ sessionId, code, participants, userId, isHost })
           </div>
         ))}
       </div>
+      {/* Deck summary. This whole screen only renders while status is 'lobby'
+          (Session.jsx switches on it), which is also the only state in which
+          reshuffling is safe — after Start, re-drawing would strand swipes on
+          cards that left the deck. */}
+      <div className="deck-summary">
+        <span className="deck-summary-line">{deckSummary}</span>
+        {isHost && dealt && (
+          <button
+            type="button"
+            className="deck-shuffle"
+            disabled={shuffling || busy}
+            onClick={shuffle}
+          >
+            {shuffling ? "Shuffling…" : "🎲 Shuffle"}
+          </button>
+        )}
+      </div>
+      {dealt && deck.length > 0 && (
+        <p className="deck-preview">
+          {deck.slice(0, 3).map((e) => e.name).join(" · ")}
+          {deck.length > 3 && ` +${deck.length - 3} more`}
+        </p>
+      )}
       {error && <p className="form-error">{error.message}</p>}
       {thin && <p className="lobby-notice">{thinMessage()}</p>}
       {isHost ? (

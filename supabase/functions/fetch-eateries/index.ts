@@ -1,7 +1,13 @@
 // fetch-eateries: host-only. Reads the session's lat/lng/radius/filters,
-// calls Google Places API (New) Nearby Search once, writes ~20 eateries
-// rows with deck positions, then flips the session to 'swiping'.
+// calls Google Places API (New) Nearby Search once, writes every survivor as an
+// eateries row in shuffled deck order, then flips the session to 'swiping'.
 // The Places API key never leaves this function.
+//
+// We always ask Places for the maximum 20 results, whatever the host's chosen
+// deck_size. Places bills per call, not per result, so asking for 10 costs the
+// same as asking for 20 — and the rows past deck_size become free reserve that
+// reshuffle_deck can draw on without a second call. Clients only ever see
+// position <= sessions.eatery_count (enforced in get_session_state).
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -36,10 +42,33 @@ const FIELD_MASK = [
 // top of Enterprise. See docs/COSTS.md.)
 
 const MIN_RATING_COUNT = 15; // below this, ratings are noise
-const MAX_DECK_SIZE = 20;
+// Places' own ceiling for one Nearby Search, and therefore the most rows we
+// can ever store for a session. Not a deck size — see deckSizeFor below.
+const MAX_STORED_EATERIES = 20;
 // Below this the deck is too thin to be worth swiping. We do not start the
-// session; the host is offered a wider radius instead.
+// session; the host is offered a wider radius instead. Compared against the
+// deck the host will actually see, capped by what they asked for: a host who
+// picked a 5-card deck and got 5 has exactly what they wanted.
 const MIN_DECK_SIZE = 8;
+const DEFAULT_DECK_SIZE = 15;
+
+const clamp = (n: number, lo: number, hi: number) =>
+  Math.max(lo, Math.min(n, hi));
+
+const deckSizeFor = (session: any) =>
+  clamp(session.deck_size ?? DEFAULT_DECK_SIZE, 5, MAX_STORED_EATERIES);
+
+// Fisher-Yates, in place. Deliberately not `sort(() => Math.random() - 0.5)`:
+// a random comparator is inconsistent, so the resulting distribution is biased
+// and engine-dependent — which shows up as the same handful of places leading
+// the deck session after session.
+function shuffle<T>(items: T[]): T[] {
+  for (let i = items.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [items[i], items[j]] = [items[j], items[i]];
+  }
+  return items;
+}
 
 // distance in metres between two lat/lng points (haversine)
 function distanceMeters(
@@ -140,6 +169,8 @@ Deno.serve(async (req) => {
     return jsonResponse(400, { error: "NO_LOCATION" });
   }
 
+  const deckSize = deckSizeFor(session);
+
   const startSwiping = async (eateryCount: number) => {
     const { error } = await admin
       .from("sessions")
@@ -150,13 +181,14 @@ Deno.serve(async (req) => {
   };
 
   // Idempotency: a double tap must not double-bill. If the deck already
-  // exists, skip the Places call and just flip the status.
-  const { count: existing, error: countError } = await admin
+  // exists, skip the Places call and just flip the status. `stored` counts the
+  // reserve too, so the deck is still capped at what the host asked for.
+  const { count: stored, error: countError } = await admin
     .from("eateries")
     .select("*", { count: "exact", head: true })
     .eq("session_id", session_id);
   if (countError) return jsonResponse(500, { error: "EATERY_LOOKUP_FAILED" });
-  if (existing && existing > 0) return startSwiping(existing);
+  if (stored && stored > 0) return startSwiping(Math.min(deckSize, stored));
 
   const filters = session.filters ?? {};
   const openNowFilter = filters.open_now !== false; // defaults on
@@ -217,9 +249,15 @@ Deno.serve(async (req) => {
     ? candidates.filter((p: any) => toOpenNow(p) === false).length
     : 0;
 
-  const rows = candidates
-    .filter((p: any) => !openNowFilter || toOpenNow(p) !== false)
-    .slice(0, MAX_DECK_SIZE)
+  // Shuffle here, once, and store the result as `position`. Every participant
+  // reads that same column, so the deck order is identical for the whole
+  // session — never shuffled per person (see 0006_deck_options.sql).
+  const survivors = shuffle(
+    candidates.filter((p: any) => !openNowFilter || toOpenNow(p) !== false)
+  );
+
+  const rows = survivors
+    .slice(0, MAX_STORED_EATERIES)
     .map((p: any, i: number) => ({
       session_id,
       place_id: p.id,
@@ -238,7 +276,9 @@ Deno.serve(async (req) => {
       lat: p.location.latitude,
       lng: p.location.longitude,
       maps_uri: p.googleMapsUri ?? null,
-      position: i + 1, // deck order must be identical for every participant
+      // Shuffled order, assigned once for the session. Positions above
+      // eatery_count are reserve: stored, never served, free to shuffle in.
+      position: i + 1,
     }));
 
   if (rows.length === 0) {
@@ -255,25 +295,37 @@ Deno.serve(async (req) => {
         .from("eateries")
         .select("*", { count: "exact", head: true })
         .eq("session_id", session_id);
-      return startSwiping(count ?? rows.length);
+      return startSwiping(Math.min(deckSize, count ?? rows.length));
     }
     console.error("Eatery insert failed", insertError);
     return jsonResponse(500, { error: "EATERY_INSERT_FAILED" });
   }
 
+  // The deck the group swipes: what the host asked for, or everything we found
+  // if that was less. The remainder stays in the table as reserve.
+  const eateryCount = Math.min(deckSize, rows.length);
+
   // Too few to swipe on: hold the session in the lobby and let the host decide
   // between a wider radius and starting anyway. The deck is already written, so
   // "start anyway" is the idempotent path above — it costs no second Places
   // call, and a redeal wipes these rows before dealing again.
-  if (rows.length < MIN_DECK_SIZE) {
+  if (eateryCount < Math.min(MIN_DECK_SIZE, deckSize)) {
+    // Publish the count even though we are not starting: the lobby renders the
+    // held deck from get_session_state, which serves position <= eatery_count
+    // and would otherwise show nothing to shuffle.
+    const { error } = await admin
+      .from("sessions")
+      .update({ eatery_count: eateryCount })
+      .eq("id", session_id);
+    if (error) return jsonResponse(500, { error: "SESSION_UPDATE_FAILED" });
     return jsonResponse(200, {
       ok: false,
       thin_deck: true,
-      eatery_count: rows.length,
+      eatery_count: eateryCount,
       closed_dropped: closedDropped,
       open_now: openNowFilter,
     });
   }
 
-  return startSwiping(rows.length);
+  return startSwiping(eateryCount);
 });
