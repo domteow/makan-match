@@ -54,6 +54,14 @@ the `fetch-eateries` Edge Function; photos are proxied and cached by
 3. The `place-photos` Storage bucket (photo cache) is created by migration
    `0002_places.sql`, so `npx supabase db push` covers it.
 
+`fetch-eateries` also needs an Anthropic key from Phase 6b on — it writes the
+card summaries from Google review text (see below). Same treatment: an Edge
+Function secret, never a client variable.
+
+```sh
+npx supabase secrets set ANTHROPIC_API_KEY=<your-key>
+```
+
 Before touching the Places field mask or call patterns, read
 `docs/COSTS.md`.
 
@@ -227,11 +235,75 @@ so you can read the description and decide in one gesture. Swipe the sheet
 down, tap outside it, or press Escape to go back to the deck; swiping the card
 either way closes it too.
 
-**Attribution is mandatory, not decorative.** Wherever a generated summary
-appears, so does the `disclosureText` Google returned with it; a review summary
-additionally links out to the place's reviews on Google Maps. Both disclosure
-strings are stored per eatery rather than hardcoded, so Google rewording them
-flows through without a deploy.
+**Attribution is mandatory, not decorative.** Wherever a Google-generated
+summary appears, so does the `disclosureText` Google returned with it; a review
+summary additionally links out to the place's reviews on Google Maps. Both
+disclosure strings are stored per eatery rather than hardcoded, so Google
+rewording them flows through without a deploy. Phase 6b adds a second kind of
+summary with its own credit line — see below.
+
+## We write the summaries ourselves (Phase 6b)
+
+Phase 6 asked Google for summaries and Singapore said no. `generativeSummary`,
+`reviewSummary` and `editorialSummary` all come back empty for Singapore places
+(verified with a direct Place Details call — only `displayName` came back).
+Raw `reviews` do come back. So `fetch-eateries` now reads the reviews and has
+Claude write the summary instead.
+
+```sh
+npx supabase db push                            # 0008_summaries.sql
+npx supabase functions deploy fetch-eateries    # reviews in the mask + summaries
+npx supabase functions deploy place-photo       # 30-day cache TTL
+```
+
+One manual step: create an Anthropic API key at
+[console.anthropic.com](https://console.anthropic.com), add it as
+`ANTHROPIC_API_KEY` under Supabase → Edge Functions → Secrets, and set a spend
+limit on it. Expected usage is cents per month, so a low cap is a pure safety
+net. Without the secret the app still runs — cards simply have no summary line.
+
+Writing them ourselves also means we choose the voice, which is the actual
+reason to prefer this even where Google has coverage. The target is dish-first
+and local: *"Zi char spot known for chilli crab and butter prawns, big round
+tables"* beats *"Casual eatery serving seafood."* The system prompt bans
+marketing adjectives, forbids naming a dish the reviews do not name, and expects
+"zi char", "cai fan" and "hawker" as ordinary words.
+
+Four rules, in `supabase/functions/fetch-eateries/summaries.ts`:
+
+- **One Anthropic call per session, batched over every uncached place.** Twenty
+  calls instead of one is the difference between a fraction of a cent and a real
+  bill, and between 3 seconds and 40.
+- **Session start never waits on it and never fails on it.** The call has an 8
+  second timeout, and a missing key, an HTTP error, a timeout or unparseable
+  output all end the same way: the deck is dealt with blank summary lines and
+  the failure is logged. Nobody is told the summariser had a bad day.
+- **Nothing is invented, and thin evidence is no evidence.** Places with fewer
+  than two reviews are skipped rather than summarised from one opinion.
+- **Google's summary wins where it exists.** If Google ever extends coverage
+  here, its summary and its disclosure string take the card; those fields stay
+  in the field mask for exactly that reason, and cost nothing at this SKU.
+
+`place_summaries` is a global cache keyed by Google `place_id` and shared across
+every session and user, so a place is summarised once however many groups swipe
+on it. The second group in the same neighbourhood usually pays for nothing at
+all.
+
+**Attribution, again.** Our summaries are not Google-generated, so they never
+carry Google's "Summarized with Gemini" line — that string is present in the
+row if and only if the summary is Google's. What ours are derived from is Google
+review text, so the detail sheet credits **"Based on Google reviews"** under the
+description instead.
+
+### Caches expire after 30 days
+
+Google Maps Platform terms let us store `place_id` indefinitely and most other
+Places content not at all. The Phase 3 photo cache was specced as permanent,
+which was not correct; `place-photo` now treats an object older than 30 days as
+a miss and refetches it, and `place_summaries` rows age out the same way. The
+practical cost is close to zero — a place's photos and reviews move slowly, so
+this is at most one refresh per item per month — and both caches still absorb
+essentially every repeat view. See `docs/COSTS.md`.
 
 ## Multi-window smoke test
 
@@ -275,3 +347,18 @@ Deck options and shuffle:
     directly raises `NOT_IN_LOBBY`.
 17. Somewhere quiet, 300m with Open now on → the thin-deck prompt still fires,
     now against `eatery_count` rather than a fixed 20.
+
+Summaries (Phase 6b):
+
+18. New session → cards carry a one-line summary that names actual dishes
+    wherever the reviews name them, and
+    `select count(*), count(overview) from place_summaries;` is populated.
+19. Second session in the same area → check Anthropic usage: the batch covers
+    only places that were not already cached. Repeat places cost nothing.
+20. Set `ANTHROPIC_API_KEY` to something invalid → the session still starts
+    within the usual couple of seconds, cards render without summary lines, and
+    nothing about it reaches the user. Put the real key back.
+21. A place with one review or none → no summary, card renders cleanly.
+22. **Read five summaries against the place's actual Google reviews and confirm
+    nothing was invented.** This is the check that matters most; rerun it
+    whenever the system prompt changes.

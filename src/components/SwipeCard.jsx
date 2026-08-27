@@ -122,14 +122,19 @@ export default function SwipeCard({
             {eatery.cuisine} · {eatery.tag}
           </div>
           {/* The one thing Phase 6 adds to the card face: ~100 characters that
-              say what the food is. Absent for most hawker stalls, and absent
+              say what the food is — Google's summary where it exists, ours
+              (written from that place's Google reviews) otherwise. Still absent
+              for places with too few reviews to summarise honestly, and absent
               means absent — no placeholder, no falling back to the longer
               description, nothing occupying the space. */}
           {eatery.summary && (
             <>
               <p className="swipe-card-summary">{eatery.summary}</p>
-              {/* Google requires attribution wherever a generated summary is
-                  shown. The string comes from the API, not from us. */}
+              {/* Only Google-generated summaries carry a disclosure, and Google
+                  requires it wherever they are shown; the string comes from the
+                  API, not from us. Ours are credited in the detail sheet, where
+                  there is room for a line that is accurate about who wrote
+                  them. */}
               {eatery.summaryDisclosure && (
                 <p className="swipe-card-disclosure">{eatery.summaryDisclosure}</p>
               )}

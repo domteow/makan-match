@@ -1266,8 +1266,9 @@ body {
   overflow: hidden;
 }
 
-/* Google's ~100-character overview. Two lines, hard stop — the swipe loop
-   stays fast, and anything longer lives in the detail sheet. */
+/* The ~100-character overview — Google's where it exists, ours otherwise.
+   Two lines, hard stop, so an over-long one cannot push the card around: the
+   swipe loop stays fast, and anything longer lives in the detail sheet. */
 .swipe-card-summary {
   margin-top: 6px;
   font-size: 13px;
@@ -1281,8 +1282,8 @@ body {
   overflow: hidden;
 }
 
-/* "Summarized with Gemini" and friends. Required attribution, so it is quiet
-   but never hidden. */
+/* "Summarized with Gemini" and friends — shown only for Google's own
+   summaries. Required attribution, so it is quiet but never hidden. */
 .swipe-card-disclosure {
   margin-top: 4px;
   font-size: 11px;

@@ -1,7 +1,8 @@
 // fetch-eateries: host-only. Reads the session's lat/lng/radius/filters,
-// calls Google Places API (New) Nearby Search once, writes every survivor as an
-// eateries row in shuffled deck order, then flips the session to 'swiping'.
-// The Places API key never leaves this function.
+// calls Google Places API (New) Nearby Search once, summarises the survivors in
+// one batched Anthropic call, writes them all as eateries rows in shuffled deck
+// order, then flips the session to 'swiping'. Neither the Places key nor the
+// Anthropic key ever leaves this function.
 //
 // We always ask Places for the maximum 20 results, whatever the host's chosen
 // deck_size. Places bills per call, not per result, so asking for 10 costs the
@@ -10,6 +11,7 @@
 // position <= sessions.eatery_count (enforced in get_session_state).
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { summariesFor, type Summary } from "./summaries.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -46,12 +48,21 @@ const FIELD_MASK = [
   //   - removing ALL of them drops the call back to Enterprise.
   // priceRange and websiteUri are NOT atmosphere fields — they are Enterprise,
   // and would be free even without the block below. See docs/COSTS.md.
+  // Google returns neither summary for Singapore places today (verified
+  // against Place Details: only displayName comes back). They stay in the mask
+  // anyway — they cost nothing extra at this SKU, and if Google ever extends
+  // coverage here we prefer their summary over ours. Not dead code: read the
+  // preference rule where the rows are built.
   "places.generativeSummary.overview",
   "places.generativeSummary.description",
   "places.generativeSummary.disclosureText",
   "places.reviewSummary.text",
   "places.reviewSummary.reviewsUri",
   "places.reviewSummary.disclosureText",
+  // Phase 6b: raw reviews ARE returned for Singapore, and are what we write our
+  // own summaries from (see summaries.ts). Also Enterprise + Atmosphere, so
+  // it joins the block above for free. The review text itself is never stored.
+  "places.reviews",
   "places.priceRange",
   "places.websiteUri",
   "places.servesVegetarianFood",
@@ -178,6 +189,34 @@ const toOpenNow = (p: any): boolean | null =>
 // RFC3339, only ever present on currentOpeningHours.
 const toClosesAt = (p: any): string | null =>
   p.currentOpeningHours?.nextCloseTime ?? null;
+
+// Which summary ends up on the card. Google's generative summary wins whenever
+// it exists: it is the one that carries a mandated disclosure string, and
+// preferring it keeps that attribution attached to the text it belongs to. It
+// exists for approximately nothing in Singapore, which is why Phase 6b writes
+// our own — those carry no Google disclosure, because Google did not write
+// them. The UI credits "Based on Google reviews" for ours instead.
+//
+// All-or-nothing per place, never a mix: Google's one-liner over our paragraph
+// would make the attribution ambiguous for both.
+function summaryColumns(p: any, ours?: Summary) {
+  const overview = localized(p.generativeSummary?.overview);
+  const description = localized(p.generativeSummary?.description);
+  if (overview || description) {
+    return {
+      summary_overview: overview,
+      summary_description: description,
+      // Stored, not hardcoded, so Google rewording "Summarized with Gemini"
+      // flows through without a deploy.
+      summary_disclosure: localized(p.generativeSummary?.disclosureText),
+    };
+  }
+  return {
+    summary_overview: ours?.overview ?? null,
+    summary_description: ours?.detail ?? null,
+    summary_disclosure: null,
+  };
+}
 
 // "chinese_restaurant" -> "Chinese Restaurant"
 const prettifyType = (t?: string) =>
@@ -326,8 +365,22 @@ Deno.serve(async (req) => {
     candidates.filter((p: any) => !openNowFilter || toOpenNow(p) !== false)
   );
 
-  const rows = survivors
-    .slice(0, MAX_STORED_EATERIES)
+  const deck = survivors.slice(0, MAX_STORED_EATERIES);
+
+  if (deck.length === 0) {
+    // Do NOT start the session; the client shows "widen the radius". Checked
+    // before summarisation so a dead search never spends an Anthropic call.
+    return jsonResponse(404, { error: "NO_EATERIES_FOUND" });
+  }
+
+  // One batched call for every place in the deck that is not already cached,
+  // reserve rows included — reshuffle_deck can promote those into the deck
+  // later, and summarising them now costs one line in the same request rather
+  // than a second call then. Never throws: if this fails the deck is dealt with
+  // blank summary lines (see summaries.ts).
+  const summaries = await summariesFor(admin, deck);
+
+  const rows = deck
     .map((p: any, i: number) => ({
       session_id,
       place_id: p.id,
@@ -346,15 +399,9 @@ Deno.serve(async (req) => {
       lat: p.location.latitude,
       lng: p.location.longitude,
       maps_uri: p.googleMapsUri ?? null,
-      // Phase 6 detail. Coverage is patchy by design of the data, not of the
-      // code: chains and sit-down restaurants usually have summaries, hawker
-      // stalls and coffeeshop units usually have none. Every one of these is
-      // allowed to be null and the UI omits the section entirely when it is.
-      summary_overview: localized(p.generativeSummary?.overview),
-      summary_description: localized(p.generativeSummary?.description),
-      // Attribution strings are stored, not hardcoded, so Google changing
-      // "Summarized with Gemini" flows through without a deploy.
-      summary_disclosure: localized(p.generativeSummary?.disclosureText),
+      // Phase 6 detail. Every one of these is allowed to be null and the UI
+      // omits the section entirely when it is.
+      ...summaryColumns(p, summaries.get(p.id)),
       review_summary: localized(p.reviewSummary?.text),
       review_summary_uri: p.reviewSummary?.reviewsUri ?? null,
       review_summary_disclosure: localized(p.reviewSummary?.disclosureText),
@@ -380,11 +427,6 @@ Deno.serve(async (req) => {
       // eatery_count are reserve: stored, never served, free to shuffle in.
       position: i + 1,
     }));
-
-  if (rows.length === 0) {
-    // Do NOT start the session; the client shows "widen the radius".
-    return jsonResponse(404, { error: "NO_EATERIES_FOUND" });
-  }
 
   const { error: insertError } = await admin.from("eateries").insert(rows);
   if (insertError) {
