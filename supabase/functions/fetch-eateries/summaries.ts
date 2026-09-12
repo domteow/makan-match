@@ -2,19 +2,22 @@
 //
 // Google returns no generativeSummary/reviewSummary for Singapore places, so
 // the "what is this food" line on the card is ours: fetch-eateries hands the
-// reviews it already paid for to one batched Anthropic call and stores the
-// result in place_summaries, keyed by Google place_id and shared across every
-// session and user. A place is summarised once per TTL window however many
-// sessions include it.
+// reviews it already paid for to Anthropic and stores the result in
+// place_summaries, keyed by Google place_id and shared across every session and
+// user. A place is summarised once per TTL window however many sessions include
+// it.
 //
 // Three rules this file exists to keep:
 //
-//   1. ONE Anthropic call per session, batched over every uncached place. Twenty
-//      calls instead of one is the difference between a fraction of a cent and a
-//      real bill, and between 3 seconds and 40.
+//   1. A HANDFUL of Anthropic calls per session at most, never one per place.
+//      Twenty calls instead of a few is the difference between a fraction of a
+//      cent and a real bill, and between 3 seconds and 40. The deck is split
+//      into chunks and the chunks run concurrently, so wall clock is roughly
+//      one call, not the sum of them.
 //   2. It never throws. A session that cannot be summarised is a session with
 //      blank summary lines, not a session that fails to start. Every failure
-//      path logs and returns what it has.
+//      path logs and returns what it has — and a chunk that fails costs only
+//      its own places, not the whole deck.
 //   3. Review text is never stored — only the derived summary. Google Maps
 //      Platform terms allow caching place_id indefinitely and little else,
 //      which is also why cached rows expire after 30 days.
@@ -32,15 +35,28 @@ const TTL_DAYS = 30;
 // Below this there is nothing honest to summarise, and no summary is a better
 // card than an invented one.
 const MIN_REVIEWS = 2;
-const MAX_REVIEWS_PER_PLACE = 4;
-const REVIEW_CHARS = 400;
 
-// Session start already spends ~2s on the Places call. "Start swiping" is a
-// deliberate press and a couple of seconds under a loading state is fine, but
-// beyond that the host thinks it hung — so we give up and deal without
-// summaries. Deliberately synchronous: a background job for twenty one-line
-// strings is not worth the machinery at this scale.
-const TIMEOUT_MS = 8000;
+// Three reviews of 250 characters is enough to name the dishes people actually
+// mention, and it is what makes a chunk answer in a few seconds. The first
+// cut of this sent 4 x 400 for 20 places in a single request and reliably blew
+// the timeout — most of that text was the tail of long reviews repeating what
+// the first lines already said.
+const MAX_REVIEWS_PER_PLACE = 3;
+const REVIEW_CHARS = 250;
+
+// Places per Anthropic request. Chunks are issued concurrently, so this trades
+// a few more (cheap) requests for a much shorter and far more predictable wall
+// clock than one 20-place request — and it makes failure partial: a chunk that
+// times out costs its own 8 cards their summary, not the whole deck.
+const CHUNK_SIZE = 8;
+
+// A ceiling, not an expectation: a chunk of 8 normally answers in a few
+// seconds, and the chunks run in parallel, so this is what a session start is
+// willing to wait in the worst case rather than what it usually costs.
+// "Start swiping" is a deliberate press under a loading state, so seconds are
+// acceptable where a hang is not. Deliberately synchronous: a background job
+// for twenty one-line strings is not worth the machinery at this scale.
+const TIMEOUT_MS = 25_000;
 
 const SYSTEM_PROMPT = `You write one-line descriptions of eateries for a Singapore group-dining app,
 based only on Google review text.
@@ -120,14 +136,20 @@ function parseSummaries(text: string): Map<string, Summary> {
   return out;
 }
 
-// One request covering every uncached place. Returns an empty map on any
-// failure — missing key, non-2xx, timeout, truncation, unparseable body.
-async function generate(payload: PlacePayload[]): Promise<Map<string, Summary>> {
-  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!apiKey) {
-    console.error("ANTHROPIC_API_KEY not set; dealing deck without summaries");
-    return new Map();
-  }
+// One request covering one chunk of places. Returns an empty map on any
+// failure — non-2xx, timeout, truncation, unparseable body — so a bad chunk
+// costs only its own places. `label` identifies the chunk in the logs.
+async function generateChunk(
+  apiKey: string,
+  payload: PlacePayload[],
+  label: string
+): Promise<Map<string, Summary>> {
+  const started = Date.now();
+  // Every log line below carries the chunk label, the place count and the
+  // elapsed ms, because the failure this code actually hits in production is a
+  // timeout — and a timeout is only diagnosable if you can see how big the
+  // request was and how long it got before giving up.
+  const elapsed = () => Date.now() - started;
 
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -147,35 +169,118 @@ async function generate(payload: PlacePayload[]): Promise<Map<string, Summary>> 
     });
 
     if (!res.ok) {
-      console.error("Anthropic API error", res.status, await res.text());
+      console.error(
+        `Summary chunk ${label}: Anthropic API error`,
+        res.status,
+        `places=${payload.length} ms=${elapsed()}`,
+        await res.text()
+      );
       return new Map();
     }
 
     const body = await res.json();
+    const usage = body.usage ?? {};
+    console.log(
+      `Summary chunk ${label}: ok places=${payload.length} ms=${elapsed()}` +
+        ` in=${usage.input_tokens ?? "?"} out=${usage.output_tokens ?? "?"}` +
+        ` stop=${body.stop_reason ?? "?"}`
+    );
     if (body.stop_reason === "max_tokens") {
       // The JSON array is cut mid-object, so the parse below would fail
-      // anyway. Log the real cause rather than "parse failed".
-      console.error("Summary response hit max_tokens; JSON is truncated");
+      // anyway. Log the real cause rather than "parse failed". If this ever
+      // fires, lower CHUNK_SIZE rather than raising MAX_TOKENS — the ceiling
+      // is there to keep one runaway response from costing real money.
+      console.error(
+        `Summary chunk ${label}: hit max_tokens, JSON is truncated` +
+          ` (places=${payload.length}, max_tokens=${MAX_TOKENS})`
+      );
     }
     const text = (body.content ?? [])
       .filter((b: any) => b.type === "text")
       .map((b: any) => b.text)
       .join("")
       .trim();
-    return parseSummaries(text);
+
+    // Drop anything we did not ask about before it reaches the merge, so an
+    // invented place_id can never become a cache row that later attaches
+    // itself to a real place — and so the counts in these logs mean what they
+    // say.
+    const asked = new Set(payload.map((p) => p.place_id));
+    const parsed = parseSummaries(text);
+    for (const placeId of parsed.keys()) {
+      if (!asked.has(placeId)) {
+        console.error(`Summary chunk ${label}: dropping unknown place_id`, placeId);
+        parsed.delete(placeId);
+      }
+    }
+    return parsed;
   } catch (err) {
     // AbortSignal.timeout throws TimeoutError here; so does any network fault.
-    console.error("Summary generation failed", err);
+    // The elapsed figure distinguishes the two: at ~TIMEOUT_MS it is the
+    // former, well short of it the latter.
+    console.error(
+      `Summary chunk ${label}: failed places=${payload.length} ms=${elapsed()}`,
+      err
+    );
     return new Map();
   }
 }
 
+// Every uncached place, in concurrent chunks. Partial results are the point:
+// whatever chunks come back get used, the rest leave their eateries with null
+// summaries.
+async function generate(payload: PlacePayload[]): Promise<Map<string, Summary>> {
+  const merged = new Map<string, Summary>();
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!apiKey) {
+    console.error("ANTHROPIC_API_KEY not set; dealing deck without summaries");
+    return merged;
+  }
+
+  const chunks: PlacePayload[][] = [];
+  for (let i = 0; i < payload.length; i += CHUNK_SIZE) {
+    chunks.push(payload.slice(i, i + CHUNK_SIZE));
+  }
+
+  const started = Date.now();
+  console.log(
+    `Summarising ${payload.length} places in ${chunks.length} chunk(s)` +
+      ` of up to ${CHUNK_SIZE}, timeout ${TIMEOUT_MS}ms`
+  );
+
+  // allSettled, not all: generateChunk already swallows its own failures, and
+  // this is the belt to that pair of braces — one chunk throwing unexpectedly
+  // must not discard the chunks that succeeded.
+  const settled = await Promise.allSettled(
+    chunks.map((chunk, i) => generateChunk(apiKey, chunk, `${i + 1}/${chunks.length}`))
+  );
+
+  let failed = 0;
+  for (const [i, result] of settled.entries()) {
+    if (result.status !== "fulfilled") {
+      failed++;
+      console.error(`Summary chunk ${i + 1}/${chunks.length}: rejected`, result.reason);
+      continue;
+    }
+    if (result.value.size === 0) failed++;
+    for (const [placeId, summary] of result.value) merged.set(placeId, summary);
+  }
+
+  console.log(
+    `Summarised ${merged.size}/${payload.length} places in ${Date.now() - started}ms` +
+      ` (${chunks.length - failed}/${chunks.length} chunks usable)`
+  );
+  return merged;
+}
+
 /**
- * Summaries for `places`, keyed by Google place_id. Cache first, one batched
- * Anthropic call for the remainder, then write the new ones back to the cache.
+ * Summaries for `places`, keyed by Google place_id. Cache first, then chunked
+ * concurrent Anthropic calls for the remainder, then write the new ones back to
+ * the cache.
  *
  * Places absent from the returned map simply have no summary: too few reviews,
- * or generation failed. Callers must treat that as normal.
+ * or their chunk failed. Callers must treat that as normal — a partially
+ * summarised deck is a normal outcome, not an error.
  */
 export async function summariesFor(
   admin: SupabaseClient,
