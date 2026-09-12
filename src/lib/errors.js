@@ -17,6 +17,12 @@ const ERROR_COPY = {
   NO_EATERIES_FOUND: "Nothing found around there 😅 Widen the radius and try again.",
   PLACES_API_ERROR: "Couldn't fetch nearby makan spots. Try again in a bit?",
   NOT_AUTHENTICATED: "Connection hiccup — refresh and try again.",
+  // place-search. BAD_QUERY / BAD_PLACE_ID / BAD_ACTION are the function
+  // refusing something the client should never have sent, so the copy points
+  // at the only thing the host can do about it.
+  BAD_QUERY: "Type at least 3 characters to search.",
+  BAD_PLACE_ID: "Couldn't look that place up. Search again?",
+  PLACE_NOT_FOUND: "Couldn't pin that place on the map. Try another?",
 };
 
 // Longest match wins: several codes are suffixes of others
@@ -37,4 +43,18 @@ export function friendlyCode(code, fallbackMessage) {
   );
   e.code = code ?? null; // screens can branch on this (e.g. NOT_A_PARTICIPANT)
   return e;
+}
+
+// Edge Function errors arrive as a Response on error.context, with the code in
+// a JSON body ({ error: "CODE" }) rather than in error.message. Async because
+// reading that body is.
+export async function edgeFunctionError(error, fallbackMessage) {
+  let code = null;
+  try {
+    code = (await error.context?.json?.())?.error ?? null;
+  } catch {
+    // Non-JSON error body (a gateway 502, an abort) — fall through to the
+    // generic message.
+  }
+  return friendlyCode(code, fallbackMessage);
 }

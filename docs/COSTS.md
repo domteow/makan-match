@@ -1,8 +1,8 @@
 # API costs
 
-Two billable Google endpoints (Phase 3) and one billable Anthropic endpoint
-(Phase 6b), all called only from Supabase Edge Functions. Change anything here
-with the [Places API (New) pricing
+Four billable Google endpoints (Phase 3, Phase 7) and one billable Anthropic
+endpoint (Phase 6b), all called only from Supabase Edge Functions. Change
+anything here with the [Places API (New) pricing
 table](https://developers.google.com/maps/billing-and-pricing/pricing) open.
 
 ## Nearby Search (`fetch-eateries`)
@@ -226,6 +226,108 @@ The bill barely notices. A place's photos change slowly, so the worst case is
 one Place Photos call per distinct photo per month instead of one ever, and
 every repeat view inside the window still costs nothing.
 
+## Autocomplete and Place Details (`place-search`, Phase 7)
+
+The host can name a place instead of using geolocation. Two Essentials-tier
+endpoints, both behind one Edge Function, and only ever touched when the host
+chooses to search rather than tap "Use my location".
+
+Rates checked August 2026 — same caveat as the Nearby Search figures above,
+confirm against the pricing table before relying on the arithmetic:
+
+| SKU | per 1,000 requests |
+| --- | --- |
+| Autocomplete (Essentials) | ~$2.83 |
+| Place Details (Essentials) | ~$5.00 |
+
+**Realistic cost per location search: ~1.5 cents**, against ~4 cents for the
+Nearby Search it precedes. Acceptable, because it replaces a fixed six-item
+area list with the whole island, and because it is opt-in per session.
+
+### The debounce is the entire cost story
+
+Autocomplete is cheap per request and billed **per request**, which means the
+only thing standing between "1.5 cents" and "15 cents" is how often the client
+fires. Two controls, in `src/components/LocationSearch.jsx`:
+
+- **350ms trailing debounce.** One request when the host stops typing, not one
+  per keystroke.
+- **3-character minimum.** Below that nothing fires at all, and `place-search`
+  rejects a short query with a 400 before it reaches Google.
+
+These are cost controls, not UX preferences. **Do not remove them, and do not
+lower the minimum.** A typical search lands at 3-4 requests; per-keystroke
+firing on "jewel changi" would be 12.
+
+Requests are also aborted (`AbortController`) when the query moves on, so a
+fast typist cannot leave a queue of in-flight lookups resolving behind them.
+
+### No session tokens, deliberately
+
+Autocomplete session tokens bundle a search's requests with the Place Details
+call that follows. They only start saving money **above 12 autocomplete
+requests per search**; below that, requests bill identically with or without a
+token. With the debounce above we average 3-4. So a token would add token
+lifecycle management, a new failure mode (reused or expired tokens billing as
+unsessioned) and nothing else. **Do not add them.**
+
+### `place_locations` is a global cache
+
+`resolve` reads through `place_locations`, keyed by Google `place_id` and shared
+across every session and user, with the same 30-day TTL as the photo and
+summary caches (same compliance reason: `place_id` may be stored indefinitely,
+other place content may not).
+
+Mall and landmark names repeat heavily across sessions — Jewel, VivoCity,
+Tampines Hub — so in practice each one costs one Place Details call per month
+however many groups search for it. A cache-lookup failure is logged and treated
+as a miss: one extra call beats failing the host's search.
+
+### Recent locations cost nothing at all
+
+The last five resolved places are kept in `localStorage`
+(`makanmatch:places` — `place_id`, name, lat, lng) and render as chips under an
+empty search field. Tapping one sets the session location straight from the
+stored coordinates: **no autocomplete request and no Place Details request**.
+For the regular Friday spot this is the common path and it is free.
+
+### The `resolve` field mask is Essentials only
+
+```
+id
+displayName
+formattedAddress
+location
+```
+
+That is the complete Essentials set this needs, and the whole call sits at the
+cheapest Place Details SKU because of it. **Do not add fields.** Anything else
+(`rating`, `photos`, `currentOpeningHours`, any `serves*` flag) lifts this call
+to Pro, Enterprise or Enterprise + Atmosphere — paying several times over for a
+lat/lng we already have, on a call that happens per search rather than per
+session.
+
+Autocomplete is pinned to Singapore (`includedRegionCodes: ["sg"]`) with a
+25km bias circle on the city centre. That is a relevance decision, not a
+billing one: neither parameter changes the SKU.
+
+### Daily quota caps
+
+Google's defaults are 175,000 autocomplete and 125,000 Place Details requests
+per day, which is no protection at all. In Google Cloud → APIs & Services →
+Places API (New) → Quotas:
+
+- `AutocompletePlacesRequest per day` → **500** (worst case ~$1.42/day)
+- `GetPlaceRequest per day` → **100** (worst case ~$0.50/day)
+
+Both are far above anything this app does — a few hosts picking a mall — so
+hitting either is a bug, and the cap is doing its job. Console settings, not
+repo settings; they have to be set by hand.
+
+`place-search` also runs gated (`verify_jwt = true`) **and** requires a real
+signed-in user, not just the anon key. That is a cost control too: an open
+autocomplete endpoint is a free Google proxy for anyone who finds the URL.
+
 ## Anthropic (`fetch-eateries`, Phase 6b)
 
 Google returns no `generativeSummary` or `reviewSummary` for Singapore places,
@@ -274,11 +376,12 @@ damage if something ever loops.
 
 ## Per-session worst case
 
-For a brand-new session in a never-seen area: 1 Nearby Search (Enterprise +
-Atmosphere) + 3 concurrent Anthropic calls + up to 20 Place Photos calls (one
-per new eatery photo), plus up to 4 more per eatery whose detail sheet is
-opened. Every repeat session in that area: 1 Nearby Search, and — until the
-30-day TTLs lapse — no photo calls and Anthropic calls only if the deck turned
-up places
-nobody has swiped on yet. Both caches are keyed by Google identifiers that are
-stable across sessions.
+For a brand-new session in a never-seen area: up to 4 Autocomplete requests +
+1 Place Details (only if the host searched a location, and only if that place
+is not already cached) + 1 Nearby Search (Enterprise + Atmosphere) + 3
+concurrent Anthropic calls + up to 20 Place Photos calls (one per new eatery
+photo), plus up to 4 more per eatery whose detail sheet is opened. Every repeat session in that area: 1 Nearby Search, and — until the
+30-day TTLs lapse — no photo calls, no Place Details call, and Anthropic calls
+only if the deck turned up places nobody has swiped on yet. A location picked
+from the recent chips adds nothing at all. All three caches are keyed by Google
+identifiers that are stable across sessions.

@@ -1,10 +1,15 @@
 import { supabase } from "./supabase.js";
-import { friendlyError, friendlyCode } from "./errors.js";
+import { friendlyError, edgeFunctionError } from "./errors.js";
 
 // Host sets lat/lng + deck options on the session before Start is possible.
+//
+// locationLabel is the name of the place the host searched for, and null on the
+// geolocation path — the RPC writes it either way, so switching from a searched
+// place back to "Use my location" clears the old label rather than leaving the
+// lobby claiming a location the deck is no longer built around.
 export async function setSessionLocation(
   sessionId,
-  { lat, lng, radiusM = 1000, deckSize = 15, filters = {} }
+  { lat, lng, radiusM = 1000, deckSize = 15, filters = {}, locationLabel = null }
 ) {
   const { error } = await supabase.rpc("set_session_location", {
     p_session_id: sessionId,
@@ -13,6 +18,7 @@ export async function setSessionLocation(
     p_radius_m: radiusM,
     p_deck_size: deckSize,
     p_filters: filters,
+    p_location_label: locationLabel,
   });
   if (error) throw friendlyError(error);
 }
@@ -46,13 +52,7 @@ export async function startSwiping(sessionId) {
     body: { session_id: sessionId },
   });
   if (!error) return data ?? {};
-  let code = null;
-  try {
-    code = (await error.context?.json?.())?.error ?? null;
-  } catch {
-    // non-JSON error body; fall through to the generic message
-  }
-  throw friendlyCode(code, "Couldn't deal the deck. Try again?");
+  throw await edgeFunctionError(error, "Couldn't deal the deck. Try again?");
 }
 
 // After a zero-match result: back to lobby with a wider radius, deck and

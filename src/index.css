@@ -631,18 +631,110 @@ body {
   width: 260px;
 }
 
-/* Session-create: area picker + filter chips */
-.area-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  margin-top: 4px;
-}
-
+/* Session-create: filter chips */
 .filter-row {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+/* ---------- Location search ----------
+   Sits under "Use my location" as the other way to answer the same question.
+   The teal backdrop stays the page; the results list is a cream chit on top of
+   it, like everything else you're meant to act on. */
+.location-search {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* What the deck will be built around. Whole chip is the dismiss target, so
+   it's one easy tap rather than a 12px x. */
+.location-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  align-self: flex-start;
+  max-width: 100%;
+  background: var(--pandan);
+  color: var(--cream);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  padding: 8px 14px;
+  min-height: 44px;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 2px 0 var(--ink);
+}
+
+.location-chip:active {
+  transform: translateY(2px);
+  box-shadow: none;
+}
+
+.location-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.location-chip-x {
+  flex: none;
+  font-size: 15px;
+  opacity: 0.85;
+}
+
+.place-results {
+  list-style: none;
+  background: var(--cream);
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.place-result {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  background: none;
+  border: none;
+  border-top: 1px solid rgba(26, 21, 18, 0.15);
+  padding: 11px 14px;
+  min-height: 44px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* The hairline is a separator, not an outline: the first row already has the
+   list's own border above it. */
+.place-results li:first-child .place-result {
+  border-top: none;
+}
+
+.place-result:active {
+  background: var(--cream-shade);
+}
+
+.place-result:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.place-primary {
+  color: var(--ink);
+  font-size: 14.5px;
+  font-weight: 800;
+}
+
+.place-secondary {
+  color: var(--taupe);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .select-chip {

@@ -310,6 +310,73 @@ practical cost is close to zero — a place's photos and reviews move slowly, so
 this is at most one refresh per item per month — and both caches still absorb
 essentially every repeat view. See `docs/COSTS.md`.
 
+## Search for a location (Phase 7)
+
+Until now the deck could only be built around where the host physically is,
+which is not how plans work — "we're meeting at Jewel later" is the normal
+case. The create screen now offers both: **Use my location** as before, and a
+search field under it for a place or mall name.
+
+```sh
+npx supabase db push                          # 0009_location_search.sql
+npx supabase functions deploy place-search    # new function
+```
+
+Two manual steps, both in Google Cloud → APIs & Services → Places API (New) →
+Quotas. The defaults (175,000 and 125,000 requests/day) are not protection:
+
+- `AutocompletePlacesRequest per day` → **500**
+- `GetPlaceRequest per day` → **100**
+
+`place-search` is one function with two actions, so there is only one
+deployment to keep track of:
+
+- `autocomplete` → predictions for a partial name, Singapore-only, biased at
+  the city centre, trimmed to `{ place_id, primary_text, secondary_text }` and
+  capped at 6.
+- `resolve` → the chosen prediction's lat/lng, read through the
+  `place_locations` cache.
+
+It runs with `verify_jwt = true` (unlike `place-photo`) and additionally
+requires a real signed-in user, because an open autocomplete endpoint is a free
+Google proxy for anyone who finds the URL.
+
+**The debounce and the 3-character minimum are cost controls, not UX
+preferences.** Autocomplete is the cheap Essentials SKU (~$2.83/1,000) but it is
+billed **per request**, so per-keystroke firing is the entire cost story. The
+client waits 350ms after the last keystroke and refuses to fire below three
+characters; the function rejects a short query with a 400 before touching
+Google. Do not remove either. There are deliberately **no session tokens**:
+they only reduce cost above 12 autocomplete requests per search and this
+averages 3-4, below which requests bill identically with or without one.
+
+Three things keep the repeat cost near zero:
+
+- **`place_locations` is a global cache** keyed by Google `place_id`, shared
+  across every session and user, with the same 30-day TTL as the photo and
+  summary caches. Mall and landmark names repeat heavily, so a second host
+  searching "Jewel" resolves it for free.
+- **Recent locations skip both calls.** The last five resolved places live in
+  `localStorage` and render as chips under an empty search field; tapping one
+  sets the session location straight from the stored lat/lng, so the regular
+  Friday spot costs nothing at all.
+- **The `resolve` field mask is Essentials only** —
+  `id,displayName,formattedAddress,location`. Adding any other field lifts the
+  call to a higher SKU for a lat/lng we already have.
+
+A searched location defaults the radius to **500m** instead of 1km: searching
+"Jewel" means food in and around Jewel, not across the East Coast. That is a
+default, not a lock — it shows in the **More options** summary and the host can
+widen it, and once they touch a radius chip nothing auto-adjusts it again.
+
+What the host searched for is stored on the session as `location_label` and
+surfaces wherever the radius used to: "15 places near Jewel Changi Airport" in
+the lobby, "near Jewel" in the deck header, "5 of you swiped · near Jewel
+Changi Airport" on results. It is `NULL` on the geolocation path — including
+when a host searches a place and then switches back to **Use my location**,
+which clears it — and every one of those lines falls back to the radius
+phrasing.
+
 ## Multi-window smoke test
 
 1. Window A: Start a session → note the room code.
@@ -367,3 +434,23 @@ Summaries (Phase 6b):
 22. **Read five summaries against the place's actual Google reviews and confirm
     nothing was invented.** This is the check that matters most; rerun it
     whenever the system prompt changes.
+
+Location search (Phase 7) — items 23 and 26 are the assertions that matter:
+
+23. Type "jewel" → predictions appear ~350ms after you stop, **and the Network
+    tab shows 3-4 `place-search` requests for the whole search, not one per
+    keystroke**.
+24. Type two characters → **no request fires at all.**
+25. Select Jewel Changi Airport → the chip reads "📍 Jewel Changi Airport",
+    More options shows 500m, and the dealt eateries are plausibly inside or
+    beside Jewel. Lobby and results both read "near Jewel Changi Airport".
+26. Start a second session and pick Jewel from the recent chips → **zero
+    `place-search` requests in the Network tab.**
+27. Third session, type "jewel" again → autocomplete fires, but Google Cloud
+    metrics show **no new Place Details request**: `resolve` came from
+    `place_locations`.
+28. "Use my location" → still works, and the lobby reads "15 places within
+    1km", not a label left over from the previous session. Search a place,
+    then dismiss the chip and use geolocation → still radius phrasing.
+29. After ~10 searches, Google Cloud metrics: Autocomplete requests roughly
+    3-4x the number of searches, Place Details only for genuinely new places.

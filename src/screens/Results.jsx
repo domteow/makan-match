@@ -5,7 +5,7 @@ import ShareButton from "../components/ShareButton.jsx";
 import { getResults } from "../lib/swipes.js";
 import { resetSessionForRedeal } from "../lib/eateries.js";
 import { eaterySharePayload } from "../lib/share.js";
-import { formatEatery } from "../lib/format.js";
+import { formatEatery, locationPhrase } from "../lib/format.js";
 
 const STAGGER_MS = 60;
 
@@ -196,8 +196,12 @@ export default function Results({ session, participants, isHost }) {
 
   const revealer = participants.find((p) => p.user_id === session.revealed_by);
   const headcount = participants.length;
+  // Where the deck came from goes here too: by the time people are arguing
+  // over the winner, "near Jewel Changi Airport" is the context that makes a
+  // name mean something. Falls back to the radius on the geolocation path.
   const context = [
     `${headcount} of you swiped`,
+    locationPhrase(session),
     session.revealed_by
       ? `revealed by ${revealer?.display_name ?? "the host"}`
       : "everyone finished",
