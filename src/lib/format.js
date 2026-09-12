@@ -16,6 +16,41 @@ export function formatRadius(m) {
   return `${Number.isInteger(km) ? km : km.toFixed(1)}km`;
 }
 
+// ---- Where the deck came from ----
+//
+// Two shapes, because there are two ways a host picks a location. A searched
+// place has a name worth showing ("near Jewel Changi Airport"); device
+// geolocation has nothing but a radius ("within 1km"). location_label is NULL
+// on the geolocation path, which is exactly the switch.
+
+export function locationPhrase(session) {
+  const label = session?.location_label;
+  return label ? `near ${label}` : `within ${formatRadius(session?.radius_m)}`;
+}
+
+// The deck header has a card count, a room code and a share button on one line,
+// so the full name does not fit. One word is usually the recognisable half
+// ("Jewel Changi Airport" -> "Jewel"), but not when that word is a bare
+// qualifier ("Ion Orchard" -> "Ion" is not a place), so short first words keep
+// their neighbour.
+const SHORT_WORD = 4;
+
+export function shortPlaceName(label) {
+  if (!label) return null;
+  const words = label.trim().split(/\s+/);
+  if (!words[0]) return null;
+  return words[0].length >= SHORT_WORD
+    ? words[0]
+    : words.slice(0, 2).join(" ");
+}
+
+// Deck-header version: the short name, or nothing at all. The header already
+// carries the room code, and "within 1km" is not worth the width mid-swipe.
+export function shortLocationPhrase(session) {
+  const short = shortPlaceName(session?.location_label);
+  return short ? `near ${short}` : null;
+}
+
 // A place closing this soon still goes in the deck — the group needs time to
 // walk there and eat, and only they know whether that fits. We flag it.
 const CLOSING_SOON_MS = 45 * 60 * 1000;

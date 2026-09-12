@@ -8,7 +8,7 @@ import { sessionSharePayload } from "../lib/share.js";
 import { recordSwipe, finishSwiping, getMySwipedEateryIds } from "../lib/swipes.js";
 import { revealNow, joinedLate } from "../lib/session.js";
 import { passesPriceFilter } from "../lib/eateries.js";
-import { formatEatery } from "../lib/format.js";
+import { formatEatery, shortLocationPhrase } from "../lib/format.js";
 
 export default function Swipe({ session, participants, eateries, userId, isHost }) {
   const [swipedIds, setSwipedIds] = useState(null); // null until loaded
@@ -81,6 +81,11 @@ export default function Swipe({ session, participants, eateries, userId, isHost 
   const others = participants.filter((p) => p.user_id !== userId);
   const done = deck.length === 0;
 
+  // Short form only: this line already carries the count, the room code and a
+  // share button. Null on the geolocation path — a radius is not worth the
+  // width mid-swipe.
+  const nearLabel = shortLocationPhrase(session);
+
   // Late shares: someone turns up after the deck went live and needs the link.
   // Built here rather than in the handler so the share stays inside the gesture.
   const sharePayload = useMemo(
@@ -102,7 +107,11 @@ export default function Swipe({ session, participants, eateries, userId, isHost 
       <Logo />
       <div className="deck-bar">
         <div className="deck-status">
-          {done ? "You're done!" : `${deck.length} left · room ${session.code}`}
+          {done
+            ? "You're done!"
+            : [`${deck.length} left`, nearLabel, `room ${session.code}`]
+                .filter(Boolean)
+                .join(" · ")}
           {joinedLate(me, session) && !done && " · you joined late"}
         </div>
         <ShareButton

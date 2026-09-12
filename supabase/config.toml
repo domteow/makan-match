@@ -395,6 +395,13 @@ verify_jwt = true
 enabled = true
 verify_jwt = false
 
+# Called through supabase.functions.invoke from app code, so the JWT is
+# attached normally. Kept gated: an open autocomplete endpoint is a free
+# Google proxy for anyone who finds the URL.
+[functions.place-search]
+enabled = true
+verify_jwt = true
+
 [analytics]
 enabled = true
 port = 54327

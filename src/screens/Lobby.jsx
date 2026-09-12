@@ -9,7 +9,7 @@ import {
   passesPriceFilter,
 } from "../lib/eateries.js";
 import { joinUrl, sessionSharePayload } from "../lib/share.js";
-import { formatRadius } from "../lib/format.js";
+import { locationPhrase } from "../lib/format.js";
 
 const AVATAR_COLORS = ["#E8542F", "#2E8B57", "#D4A017", "#7B5EA7", "#C8331F", "#1F7A4D"];
 
@@ -73,7 +73,9 @@ export default function Lobby({
     [eateries, session?.filters]
   );
   const deckCount = dealt ? deck.length : (session?.deck_size ?? 15);
-  const deckSummary = `${deckCount} place${deckCount === 1 ? "" : "s"} within ${formatRadius(session?.radius_m)}`;
+  // "15 places near Jewel Changi Airport" when the host searched for a place,
+  // "15 places within 1km" when it came from geolocation.
+  const deckSummary = `${deckCount} place${deckCount === 1 ? "" : "s"} ${locationPhrase(session)}`;
 
   // Honest label: this re-draws from the places we already found nearby (the
   // reserve fetch-eateries stored beyond deck_size). It does not search further

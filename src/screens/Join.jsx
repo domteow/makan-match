@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Logo from "../components/Logo.jsx";
+import LocationSearch from "../components/LocationSearch.jsx";
 import { createSession, joinSession } from "../lib/session.js";
 import { setSessionLocation } from "../lib/eateries.js";
 import { formatRadius } from "../lib/format.js";
@@ -10,16 +11,6 @@ import {
   getDeckPrefs,
   rememberDeckPrefs,
 } from "../lib/prefs.js";
-
-// Manual fallback when geolocation is denied/unavailable. MVP: a few SG areas.
-const SG_AREAS = [
-  { label: "Tanjong Pagar", lat: 1.2765, lng: 103.846 },
-  { label: "Orchard", lat: 1.3048, lng: 103.8318 },
-  { label: "Bugis", lat: 1.3009, lng: 103.8559 },
-  { label: "Jurong East", lat: 1.3329, lng: 103.7436 },
-  { label: "Tampines", lat: 1.3536, lng: 103.9451 },
-  { label: "Serangoon", lat: 1.3554, lng: 103.8737 },
-];
 
 const PRICE_OPTIONS = [
   { value: null, label: "Any" },
@@ -39,6 +30,11 @@ const RADIUS_OPTIONS = [
   { value: 2000, label: "2km", sub: "25 min walk" },
   { value: 5000, label: "5km", sub: "worth a ride" },
 ];
+
+// Searching "Jewel" means you want food in and around Jewel, not across the
+// East Coast — so a searched location starts tighter than the geolocation
+// default. Only applied while the host has not picked a radius themselves.
+const SEARCHED_RADIUS_M = 500;
 
 // 20 is the Places maximum and therefore the deck ceiling. All three sizes cost
 // the same single Places call — the choice is about swiping stamina, not spend.
@@ -76,13 +72,25 @@ export default function Join({ mode }) {
   const [code, setCode] = useState(
     (searchParams.get("code") || "").toUpperCase()
   );
-  const [loc, setLoc] = useState(null); // { lat, lng, label }
+  // Two shapes, one slot: { source: "geo", lat, lng } from the device, or
+  // { source: "search", place_id, name, lat, lng } from a searched place. Only
+  // the searched one has a name worth putting on the session.
+  const [loc, setLoc] = useState(null);
   const [locating, setLocating] = useState(false);
   const [geoFailed, setGeoFailed] = useState(false);
   const [priceMax, setPriceMax] = useState(null);
   const [openNow, setOpenNow] = useState(true); // closed places are the default no
   // Prefilled from the host's last session — see lib/prefs.js.
   const [prefs, setPrefs] = useState(getDeckPrefs);
+  // The remembered radius, kept aside so the searched-location default (500m)
+  // can be applied and then undone without losing what the host last chose.
+  const rememberedRadiusM = useRef(prefs.radiusM);
+  // Set the moment the host taps a radius chip. From then on the radius is
+  // theirs and nothing auto-adjusts it — picking a second searched place must
+  // not stomp the 2km they just asked for. A ref, not state: nothing renders
+  // from it, and the geolocation callback fires long after its render, so a
+  // captured `false` would undo a chip tapped while locating was in flight.
+  const radiusTouched = useRef(false);
   const [showMore, setShowMore] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -90,6 +98,15 @@ export default function Join({ mode }) {
   const canSubmit =
     name.trim().length > 0 &&
     (isStart ? loc != null : code.trim().length > 0);
+
+  // The radius follows the kind of location, until the host overrides it:
+  // a searched mall wants 500m, "where I am now" wants whatever they last used.
+  const setRadiusFor = (source) => {
+    if (radiusTouched.current) return;
+    const radiusM =
+      source === "search" ? SEARCHED_RADIUS_M : rememberedRadiusM.current;
+    setPrefs((p) => (p.radiusM === radiusM ? p : { ...p, radiusM }));
+  };
 
   const useMyLocation = () => {
     if (!navigator.geolocation) {
@@ -100,10 +117,11 @@ export default function Join({ mode }) {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setLoc({
+          source: "geo",
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
-          label: "My location",
         });
+        setRadiusFor("geo");
         setGeoFailed(false);
         setLocating(false);
       },
@@ -113,6 +131,18 @@ export default function Join({ mode }) {
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
     );
+  };
+
+  const pickSearchedPlace = (place) => {
+    setLoc({ source: "search", ...place });
+    setRadiusFor("search");
+    setGeoFailed(false);
+  };
+
+  // Back to no location at all rather than silently falling back to the device:
+  // "Use my location" is one tap away and is the host's call, not ours.
+  const clearSearchedPlace = () => {
+    setLoc((prev) => (prev?.source === "search" ? null : prev));
   };
 
   const submit = async (e) => {
@@ -132,8 +162,18 @@ export default function Join({ mode }) {
           radiusM: prefs.radiusM,
           deckSize: prefs.deckSize,
           filters: { price_max: priceMax, open_now: openNow },
+          // Only a searched place has a name; the geolocation path sends null,
+          // which is what keeps the lobby on radius phrasing.
+          locationLabel: loc.source === "search" ? loc.name : null,
         });
-        rememberDeckPrefs(prefs);
+        // A radius the host never touched is not a preference — remembering the
+        // automatic 500m would quietly shrink their next geolocated session.
+        rememberDeckPrefs({
+          radiusM: radiusTouched.current
+            ? prefs.radiusM
+            : rememberedRadiusM.current,
+          deckSize: prefs.deckSize,
+        });
       } else {
         res = await joinSession(code.trim(), name.trim());
       }
@@ -181,33 +221,28 @@ export default function Join({ mode }) {
               <span className="field-label">WHERE ARE YOU EATING?</span>
               <button
                 type="button"
-                className={`btn ${loc?.label === "My location" ? "btn-pandan" : "btn-cream"}`}
+                className={`btn ${loc?.source === "geo" ? "btn-pandan" : "btn-cream"}`}
                 disabled={locating}
                 onClick={useMyLocation}
               >
                 {locating
                   ? "Locating…"
-                  : loc?.label === "My location"
+                  : loc?.source === "geo"
                     ? "📍 Using your location ✓"
                     : "📍 Use my location"}
               </button>
               {geoFailed && (
                 <p className="field-hint">
-                  Couldn&rsquo;t get your location — pick an area instead:
+                  Couldn&rsquo;t get your location — search for a place instead:
                 </p>
               )}
-              <div className="area-grid">
-                {SG_AREAS.map((a) => (
-                  <button
-                    key={a.label}
-                    type="button"
-                    className={`select-chip${loc?.label === a.label ? " selected" : ""}`}
-                    onClick={() => setLoc(a)}
-                  >
-                    {a.label}
-                  </button>
-                ))}
-              </div>
+              {/* Where you are is one answer; where you're meeting is the other,
+                  and it's the one a plan usually starts from. */}
+              <LocationSearch
+                value={loc?.source === "search" ? loc : null}
+                onPick={pickSearchedPlace}
+                onClear={clearSearchedPlace}
+              />
             </div>
             <div className="field">
               <span className="field-label">OPENING HOURS</span>
@@ -260,9 +295,10 @@ export default function Join({ mode }) {
                         main={o.label}
                         sub={o.sub}
                         selected={prefs.radiusM === o.value}
-                        onClick={() =>
-                          setPrefs((p) => ({ ...p, radiusM: o.value }))
-                        }
+                        onClick={() => {
+                          radiusTouched.current = true;
+                          setPrefs((p) => ({ ...p, radiusM: o.value }));
+                        }}
                       />
                     ))}
                   </div>
