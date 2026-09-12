@@ -1,8 +1,8 @@
 // fetch-eateries: host-only. Reads the session's lat/lng/radius/filters,
 // calls Google Places API (New) Nearby Search once, summarises the survivors in
-// one batched Anthropic call, writes them all as eateries rows in shuffled deck
-// order, then flips the session to 'swiping'. Neither the Places key nor the
-// Anthropic key ever leaves this function.
+// a few concurrent Anthropic calls, writes them all as eateries rows in
+// shuffled deck order, then flips the session to 'swiping'. Neither the Places
+// key nor the Anthropic key ever leaves this function.
 //
 // We always ask Places for the maximum 20 results, whatever the host's chosen
 // deck_size. Places bills per call, not per result, so asking for 10 costs the
@@ -373,11 +373,12 @@ Deno.serve(async (req) => {
     return jsonResponse(404, { error: "NO_EATERIES_FOUND" });
   }
 
-  // One batched call for every place in the deck that is not already cached,
-  // reserve rows included — reshuffle_deck can promote those into the deck
-  // later, and summarising them now costs one line in the same request rather
-  // than a second call then. Never throws: if this fails the deck is dealt with
-  // blank summary lines (see summaries.ts).
+  // Batched, chunked and concurrent over every place in the deck that is not
+  // already cached, reserve rows included — reshuffle_deck can promote those
+  // into the deck later, and summarising them now costs one more line in a
+  // request we are already making rather than a second round trip then. Never
+  // throws, and degrades per chunk: whatever comes back is used and the rest
+  // of the cards simply have no summary line (see summaries.ts).
   const summaries = await summariesFor(admin, deck);
 
   const rows = deck

@@ -161,7 +161,7 @@ section below). It is another Enterprise + Atmosphere field, and the call was
 already at that SKU, so the Nearby Search bill is **unchanged** — this is the
 "adding more Atmosphere fields costs nothing" case from the list above.
 
-Review text is used and discarded: `fetch-eateries` sends up to four reviews
+Review text is used and discarded: `fetch-eateries` sends up to three reviews
 per place to Anthropic and stores only the summary that comes back. Nothing in
 the database holds review prose.
 
@@ -232,15 +232,22 @@ Google returns no `generativeSummary` or `reviewSummary` for Singapore places,
 so the line that says what the food actually is comes from Claude
 (`claude-haiku-4-5`), written from the reviews Nearby Search already returned.
 
-**One batched call per session, maximum.** Every uncached place in the deck
-goes into a single request — twenty separate calls would be the difference
+**At most three calls per session, never one per place.** Uncached places are
+batched into chunks of 8 and the chunks are issued concurrently, so a full
+20-place deck is 3 requests — twenty separate calls would be the difference
 between a fraction of a cent and a real bill, and between 3 seconds and 40.
-The inputs are small (≤20 places × ≤4 reviews × ≤400 chars) and the output is
-a couple of lines per place, so a full 20-place session is a fraction of a cent
-at Haiku rates.
+The inputs are small (≤8 places × ≤3 reviews × ≤250 chars per request) and the
+output is a couple of lines per place, so a full 20-place session is a fraction
+of a cent at Haiku rates.
 
-Most sessions cost less than that, because `place_summaries` is keyed by
-Google `place_id` and shared across every session and user: the second group
+Chunking is a latency decision, not a cost one; per-token cost is the same
+either way. One 20-place request reliably blew the 8-second timeout in
+practice, and a timeout meant the whole deck lost its summaries. Chunks answer
+in a few seconds each, run in parallel (so wall clock is roughly one call, not
+three), and fail independently.
+
+Most sessions cost less than the full three, because `place_summaries` is keyed
+by Google `place_id` and shared across every session and user: the second group
 to swipe in the same neighbourhood pays only for places the first group did not
 see. Cache rows carry the same 30-day TTL as the photos, for the same
 compliance reason, so a heavily-reused place is re-summarised about monthly.
@@ -248,11 +255,18 @@ compliance reason, so a heavily-reused place is re-summarised about monthly.
 Three guarantees the implementation keeps, all in
 `supabase/functions/fetch-eateries/summaries.ts`:
 
-- **Session start never fails on summarisation.** Missing key, HTTP error,
-  8-second timeout, truncated or unparseable JSON — every path logs and deals
-  the deck with blank summary lines.
+- **Session start never fails on summarisation, and failure is partial.**
+  Missing key, HTTP error, 25-second timeout, truncated or unparseable JSON —
+  every path logs and the affected cards simply have no summary line. A chunk
+  that fails costs its own 8 places, not the deck.
 - **Places with fewer than 2 reviews are skipped**, not summarised thinly.
 - **Only the summary is stored**, never the review text it came from.
+
+Each chunk logs its place count, elapsed ms and input/output token counts, so
+the next timeout is diagnosable from the Edge Function logs without a repro. If
+`max_tokens` truncation ever shows up there, lower `CHUNK_SIZE` rather than
+raising `MAX_TOKENS` — the ceiling is what stops one runaway response costing
+real money.
 
 Set a spend limit on the Anthropic key (console.anthropic.com → Limits).
 Expected usage is cents per month, so a low cap costs nothing and bounds the
@@ -261,9 +275,10 @@ damage if something ever loops.
 ## Per-session worst case
 
 For a brand-new session in a never-seen area: 1 Nearby Search (Enterprise +
-Atmosphere) + 1 batched Anthropic call + up to 20 Place Photos calls (one per
-new eatery photo), plus up to 4 more per eatery whose detail sheet is opened.
-Every repeat session in that area: 1 Nearby Search, and — until the 30-day TTLs
-lapse — no photo calls and an Anthropic call only if the deck turned up places
+Atmosphere) + 3 concurrent Anthropic calls + up to 20 Place Photos calls (one
+per new eatery photo), plus up to 4 more per eatery whose detail sheet is
+opened. Every repeat session in that area: 1 Nearby Search, and — until the
+30-day TTLs lapse — no photo calls and Anthropic calls only if the deck turned
+up places
 nobody has swiped on yet. Both caches are keyed by Google identifiers that are
 stable across sessions.

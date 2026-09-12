@@ -271,13 +271,18 @@ marketing adjectives, forbids naming a dish the reviews do not name, and expects
 
 Four rules, in `supabase/functions/fetch-eateries/summaries.ts`:
 
-- **One Anthropic call per session, batched over every uncached place.** Twenty
-  calls instead of one is the difference between a fraction of a cent and a real
-  bill, and between 3 seconds and 40.
-- **Session start never waits on it and never fails on it.** The call has an 8
-  second timeout, and a missing key, an HTTP error, a timeout or unparseable
-  output all end the same way: the deck is dealt with blank summary lines and
-  the failure is logged. Nobody is told the summariser had a bad day.
+- **A few batched Anthropic calls per session, never one per place.** Uncached
+  places go out in chunks of 8, issued concurrently, so a full deck is three
+  requests finishing in about the time of one. Twenty separate calls would be
+  the difference between a fraction of a cent and a real bill, and between 3
+  seconds and 40. (The first cut sent all 20 places in a single request and
+  reliably timed out — which is why the chunks exist.)
+- **Session start never fails on it, and failure is partial.** Each chunk has a
+  25 second ceiling, and a missing key, an HTTP error, a timeout or unparseable
+  output all end the same way: those cards are dealt with blank summary lines
+  and the failure is logged with the place count, elapsed ms and token counts.
+  A chunk that fails costs its own 8 places, not the deck. Nobody is told the
+  summariser had a bad day.
 - **Nothing is invented, and thin evidence is no evidence.** Places with fewer
   than two reviews are skipped rather than summarised from one opinion.
 - **Google's summary wins where it exists.** If Google ever extends coverage
